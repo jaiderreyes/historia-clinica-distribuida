@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Historia Clínica Distribuida</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <!-- Iconos Phosphor -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="ph ph-database"></i> Nodes Monitor</h1>
+            <p>Sistema de Historia Clínica Distribuida</p>
+        </header>
+
+        <div class="grid-container" id="nodes-grid">
+            <!-- Los nodos se inyectarán aquí vía JS -->
+            <div class="loading">Cargando nodos...</div>
+        </div>
+
+        <section class="query-section">
+            <h2><i class="ph ph-terminal-window"></i> Distributed Query Simulator</h2>
+            <div class="query-console">
+                <textarea id="sql-query">SELECT documento_id, nombre_completo, edad FROM usuario;</textarea>
+                <button class="btn btn-primary" onclick="executeQuery()">
+                    <i class="ph ph-play"></i> Run Query on All Nodes
+                </button>
+            </div>
+
+            <div id="query-results" class="results-container" style="display: none;">
+                <h3>Resultados Combinados:</h3>
+                <div class="node-status-bar" id="node-status-bar"></div>
+                <div class="table-responsive">
+                    <table id="results-table">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Template para un nodo -->
+    <template id="node-template">
+        <div class="node-card">
+            <div class="node-header">
+                <div class="status-indicator"></div>
+                <h2 class="node-id">Node ID</h2>
+            </div>
+            <div class="node-body">
+                <p>Status: <span class="status-text">...</span></p>
+                <p>Port: <span class="node-port">...</span></p>
+            </div>
+            <div class="node-actions">
+                <button class="btn btn-start" onclick="controlNode(this, 'start')"><i class="ph ph-play"></i>
+                    Start</button>
+                <button class="btn btn-stop" onclick="controlNode(this, 'stop')"><i class="ph ph-stop"></i>
+                    Stop</button>
+                <button class="btn btn-restart" onclick="controlNode(this, 'restart')"><i
+                        class="ph ph-arrows-clockwise"></i></button>
+            </div>
+        </div>
+    </template>
+
+    <script src="/static/script.js"></script>
+</body>
+
+</html>

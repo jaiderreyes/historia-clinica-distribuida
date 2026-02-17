@@ -1,0 +1,128 @@
+# Historia Clínica Distribuida - Sistema Completo
+# Levantar: docker compose up -d  (o docker-compose up -d)
+# Puertos: 5433 (nodo1), 5434 (nodo2), 5435 (nodo3), 8001 (app)
+
+services:
+  app:
+    build: .
+    container_name: historia_clinica_app
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./templates:/app/templates
+      - ./static:/app/static
+    depends_on:
+      pg_nodo1:
+        condition: service_healthy
+      pg_nodo2:
+        condition: service_healthy
+      pg_nodo3:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - historia_clinica_net
+
+  hapi-fhir:
+    image: hapiproject/hapi:latest
+    container_name: hapi_fhir_server
+    ports:
+      - "8080:8080"
+    environment:
+      - spring.datasource.url=jdbc:postgresql://pg_nodo1:5432/fhir_db
+      - spring.datasource.username=admin
+      - spring.datasource.password=admin
+      - spring.datasource.driverClassName=org.postgresql.Driver
+      - spring.jpa.properties.hibernate.dialect=ca.uhn.fhir.jpa.model.dialect.HapiFhirPostgres94Dialect
+      - hapi.fhir.fhir_version=R4
+      - hapi.fhir.subscription.resthook_enabled=false
+      - hapi.fhir.allow_external_references=true
+      - hapi.fhir.allow_multiple_delete=true
+      - hapi.fhir.reuse_cached_search_results_millis=60000
+    depends_on:
+      pg_nodo1:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - historia_clinica_net
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/fhir/metadata || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  pg_nodo1:
+    image: postgres:15
+    container_name: pg_nodo1
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: historia_clinica
+    volumes:
+      - pg_data_nodo1:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d historia_clinica" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - historia_clinica_net
+
+  pg_nodo2:
+    image: postgres:15
+    container_name: pg_nodo2
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: historia_clinica
+    volumes:
+      - pg_data_nodo2:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d historia_clinica" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - historia_clinica_net
+
+  pg_nodo3:
+    image: postgres:15
+    container_name: pg_nodo3
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: historia_clinica
+    volumes:
+      - pg_data_nodo3:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U admin -d historia_clinica" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - historia_clinica_net
+
+volumes:
+  pg_data_nodo1:
+  pg_data_nodo2:
+  pg_data_nodo3:
+
+
+networks:
+  historia_clinica_net:
+    driver: bridge

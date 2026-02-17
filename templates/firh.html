@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Historia Clínica - FIRH</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
+    header { background: #2563eb; color: white; padding: 1rem 1.5rem; }
+    header h1 { margin: 0; font-size: 1.4rem; }
+    main { padding: 1rem 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
+    .section-card { background: white; border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .section-header { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .section-header h2 { margin: 0; font-size: 1.1rem; }
+    .section-body { margin-top: 0.75rem; }
+    .section-body.collapsed { display: none; }
+    .fields-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem 1rem; }
+    .form-field { display: flex; flex-direction: column; font-size: 0.9rem; }
+    .form-field label { font-weight: 500; margin-bottom: 0.15rem; }
+    .form-field span.required { color: #dc2626; margin-left: 0.15rem; }
+    .form-field input,
+    .form-field select,
+    .form-field textarea { border: 1px solid #d4d4d8; border-radius: 0.375rem; padding: 0.4rem 0.5rem; font-size: 0.9rem; }
+    .form-field textarea { min-height: 60px; resize: vertical; }
+    .helper-text { font-size: 0.75rem; color: #6b7280; margin-top: 0.15rem; }
+    .actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; flex-wrap: wrap; }
+    button { border-radius: 0.375rem; border: none; padding: 0.5rem 0.9rem; font-size: 0.9rem; cursor: pointer; }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-secondary { background: #e5e7eb; color: #111827; }
+    .status-bar { margin-top: 1rem; font-size: 0.9rem; }
+    .status-bar.success { color: #166534; }
+    .status-bar.error { color: #b91c1c; }
+    .pill { display: inline-flex; align-items: center; padding: 0.1rem 0.4rem; border-radius: 999px; font-size: 0.7rem; background: #e5e7eb; color: #374151; margin-left: 0.25rem; }
+    .pill.pk { background: #f97316; color: white; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Historia Clínica Distribuida - Formulario FIRH</h1>
+  </header>
+  <main>
+    <p>Complete los campos de la historia clínica y envíelos al backend. Los campos se generan dinámicamente a partir del esquema expuesto en <code>/api/firh/campos</code>.</p>
+
+    <div class="actions">
+      <button id="reload-schema" class="btn-secondary">↻ Recargar definición de campos</button>
+      <button id="collapse-all" class="btn-secondary">Colapsar todo</button>
+      <button id="expand-all" class="btn-secondary">Expandir todo</button>
+    </div>
+
+    <div id="sections-container"></div>
+
+    <div class="actions">
+      <button id="submit-all" class="btn-primary">Guardar historia clínica completa</button>
+    </div>
+
+    <div id="status" class="status-bar"></div>
+  </main>
+
+  <script>
+    const API_CAMPOS = '/api/firh/campos';
+    const API_CARGAR = '/api/firh/cargar';
+
+    const sectionsContainer = document.getElementById('sections-container');
+    const statusBar = document.getElementById('status');
+    const reloadBtn = document.getElementById('reload-schema');
+    const collapseAllBtn = document.getElementById('collapse-all');
+    const expandAllBtn = document.getElementById('expand-all');
+    const submitAllBtn = document.getElementById('submit-all');
+
+    function setStatus(message, type = '') {
+      statusBar.textContent = message;
+      statusBar.className = 'status-bar ' + (type || '');
+    }
+
+    function createFieldInput(sectionKey, fieldKey, fieldDef) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'form-field';
+
+      const label = document.createElement('label');
+      label.setAttribute('for', `${sectionKey}__${fieldKey}`);
+      label.textContent = fieldDef.etiqueta || fieldKey;
+      if (fieldDef.requerido) {
+        const req = document.createElement('span');
+        req.className = 'required';
+        req.textContent = '*';
+        label.appendChild(req);
+      }
+      if (fieldDef.pk) {
+        const pill = document.createElement('span');
+        pill.className = 'pill pk';
+        pill.textContent = 'PK';
+        label.appendChild(pill);
+      }
+      wrapper.appendChild(label);
+
+      let input;
+      const tipo = fieldDef.tipo || 'text';
+
+      if (tipo === 'textarea') {
+        input = document.createElement('textarea');
+      } else if (tipo === 'boolean') {
+        input = document.createElement('select');
+        const optEmpty = document.createElement('option');
+        optEmpty.value = '';
+        optEmpty.textContent = '';
+        const optTrue = document.createElement('option');
+        optTrue.value = 'true';
+        optTrue.textContent = 'Sí';
+        const optFalse = document.createElement('option');
+        optFalse.value = 'false';
+        optFalse.textContent = 'No';
+        input.appendChild(optEmpty);
+        input.appendChild(optTrue);
+        input.appendChild(optFalse);
+      } else {
+        input = document.createElement('input');
+        if (tipo === 'number') {
+          input.type = 'number';
+        } else if (tipo === 'date') {
+          input.type = 'date';
+        } else if (tipo === 'datetime-local') {
+          input.type = 'datetime-local';
+        } else {
+          input.type = 'text';
+        }
+      }
+
+      input.id = `${sectionKey}__${fieldKey}`;
+      input.name = `${sectionKey}.${fieldKey}`;
+      if (fieldDef.requerido) {
+        input.required = true;
+      }
+
+      wrapper.appendChild(input);
+
+      if (fieldDef.descripcion) {
+        const helper = document.createElement('div');
+        helper.className = 'helper-text';
+        helper.textContent = fieldDef.descripcion;
+        wrapper.appendChild(helper);
+      }
+
+      return wrapper;
+    }
+
+    function renderSections(schema) {
+      sectionsContainer.innerHTML = '';
+
+      Object.entries(schema).forEach(([sectionKey, sectionValue]) => {
+        const sectionCard = document.createElement('section');
+        sectionCard.className = 'section-card';
+
+        const header = document.createElement('div');
+        header.className = 'section-header';
+
+        const title = document.createElement('h2');
+        title.textContent = sectionKey.replace('_', ' ').toUpperCase();
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.type = 'button';
+        toggleBtn.className = 'btn-secondary';
+        toggleBtn.textContent = 'Colapsar';
+
+        header.appendChild(title);
+        header.appendChild(toggleBtn);
+
+        const body = document.createElement('div');
+        body.className = 'section-body';
+
+        const grid = document.createElement('div');
+        grid.className = 'fields-grid';
+
+        const fields = sectionValue.campos || sectionValue;
+
+        Object.entries(fields).forEach(([fieldKey, fieldDef]) => {
+          const fieldNode = createFieldInput(sectionKey, fieldKey, fieldDef);
+          grid.appendChild(fieldNode);
+        });
+
+        body.appendChild(grid);
+
+        toggleBtn.addEventListener('click', () => {
+          const collapsed = body.classList.toggle('collapsed');
+          toggleBtn.textContent = collapsed ? 'Expandir' : 'Colapsar';
+        });
+
+        sectionCard.appendChild(header);
+        sectionCard.appendChild(body);
+        sectionsContainer.appendChild(sectionCard);
+      });
+    }
+
+    async function loadSchema() {
+      try {
+        setStatus('Cargando definición de campos…');
+        const res = await fetch(API_CAMPOS);
+        if (!res.ok) {
+          throw new Error('Error al cargar /api/firh/campos: ' + res.status);
+        }
+        const schema = await res.json();
+        renderSections(schema);
+        setStatus('Definición de campos cargada correctamente.', 'success');
+      } catch (err) {
+        console.error(err);
+        setStatus('No se pudo cargar la definición de campos: ' + err.message, 'error');
+      }
+    }
+
+    function collectSectionData(sectionKey) {
+      const data = {};
+      const inputs = sectionsContainer.querySelectorAll(`[name^="${sectionKey}."]`);
+      inputs.forEach((el) => {
+        const [, fieldKey] = el.name.split('.');
+        let value = el.value;
+        if (value === '') {
+          data[fieldKey] = null;
+          return;
+        }
+        if (el.type === 'number') {
+          const num = Number(value);
+          data[fieldKey] = Number.isNaN(num) ? null : num;
+        } else if (el.type === 'datetime-local' || el.type === 'date') {
+          data[fieldKey] = value;
+        } else if (el.tagName === 'SELECT') {
+          if (value === 'true') data[fieldKey] = true;
+          else if (value === 'false') data[fieldKey] = false;
+          else data[fieldKey] = null;
+        } else {
+          data[fieldKey] = value;
+        }
+      });
+      return data;
+    }
+
+    async function submitAll() {
+      setStatus('Enviando datos de la historia clínica…');
+
+      const sections = ['usuario', 'atencion', 'tecnologia_salud', 'diagnostico', 'egreso', 'profesional_salud'];
+
+      try {
+        for (const section of sections) {
+          const datos = collectSectionData(section);
+          const payload = { tabla: section, datos };
+
+          const res = await fetch(API_CARGAR, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            const msg = errBody.detail || ('HTTP ' + res.status);
+            throw new Error(`Error al guardar sección "${section}": ${msg}`);
+          }
+        }
+
+        setStatus('Historia clínica guardada correctamente en todas las secciones.', 'success');
+      } catch (err) {
+        console.error(err);
+        setStatus(err.message, 'error');
+      }
+    }
+
+    reloadBtn.addEventListener('click', loadSchema);
+    collapseAllBtn.addEventListener('click', () => {
+      sectionsContainer.querySelectorAll('.section-body').forEach((body) => {
+        body.classList.add('collapsed');
+      });
+      sectionsContainer.querySelectorAll('.section-header button').forEach((btn) => {
+        btn.textContent = 'Expandir';
+      });
+    });
+    expandAllBtn.addEventListener('click', () => {
+      sectionsContainer.querySelectorAll('.section-body').forEach((body) => {
+        body.classList.remove('collapsed');
+      });
+      sectionsContainer.querySelectorAll('.section-header button').forEach((btn) => {
+        btn.textContent = 'Colapsar';
+      });
+    });
+    submitAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      submitAll();
+    });
+
+    loadSchema();
+  </script>
+</body>
+</html>

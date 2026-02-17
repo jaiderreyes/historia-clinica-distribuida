@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Paciente - FHIR</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 0.95rem;
+        }
+
+        .form-container {
+            padding: 2.5rem;
+        }
+
+        .form-section {
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #667eea;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        label .required {
+            color: #e53e3e;
+            font-size: 1.2rem;
+        }
+
+        input,
+        select {
+            padding: 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        input:invalid:not(:placeholder-shown) {
+            border-color: #e53e3e;
+        }
+
+        input:valid:not(:placeholder-shown) {
+            border-color: #48bb78;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        button {
+            flex: 1;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f7fafc;
+            color: #4a5568;
+            border: 2px solid #e2e8f0;
+        }
+
+        .btn-secondary:hover {
+            background: #edf2f7;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            display: none;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .alert.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+
+        .alert.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+
+        .alert.show {
+            display: flex;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        .help-text {
+            font-size: 0.75rem;
+            color: #718096;
+            margin-top: 0.25rem;
+        }
+
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column-reverse;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                <i class="ph ph-user-circle-plus"></i>
+                Registro de Paciente
+            </h1>
+            <p>Sistema de Historia Clínica Interoperable - FHIR R4</p>
+        </div>
+
+        <div class="form-container">
+            <div id="alert" class="alert"></div>
+
+            <div id="loading" class="loading">
+                <div class="spinner"></div>
+                <p>Creando paciente en HAPI FHIR Server...</p>
+            </div>
+
+            <form id="patientForm">
+                <div class="form-section">
+                    <h2 class="section-title">
+                        <i class="ph ph-identification-card"></i>
+                        Datos de Identificación
+                    </h2>
+
+                    <div class="form-grid">
+                        <!-- Campo 1: Tipo de documento -->
+                        <div class="form-group">
+                            <label for="tipoDocumento">
+                                Tipo de Documento <span class="required">*</span>
+                            </label>
+                            <select id="tipoDocumento" name="tipoDocumento" required>
+                                <option value="">Seleccione...</option>
+                                <option value="CC">Cédula de Ciudadanía</option>
+                                <option value="TI">Tarjeta de Identidad</option>
+                                <option value="CE">Cédula de Extranjería</option>
+                                <option value="PA">Pasaporte</option>
+                                <option value="RC">Registro Civil</option>
+                                <option value="MS">Menor sin identificación</option>
+                                <option value="AS">Adulto sin identificación</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 2: Número de documento -->
+                        <div class="form-group">
+                            <label for="numeroDocumento">
+                                Número de Documento <span class="required">*</span>
+                            </label>
+                            <input type="text" id="numeroDocumento" name="numeroDocumento" placeholder="1234567890"
+                                pattern="[0-9]{6,15}" required>
+                            <span class="help-text">Solo números, 6-15 dígitos</span>
+                        </div>
+
+                        <!-- Campo 4: Nombre completo -->
+                        <div class="form-group full-width">
+                            <label for="nombreCompleto">
+                                Nombre Completo <span class="required">*</span>
+                            </label>
+                            <input type="text" id="nombreCompleto" name="nombreCompleto" placeholder="Juan Pérez García"
+                                minlength="3" required>
+                        </div>
+
+                        <!-- Campo 5: Fecha de nacimiento -->
+                        <div class="form-group">
+                            <label for="fechaNacimiento">
+                                Fecha de Nacimiento <span class="required">*</span>
+                            </label>
+                            <input type="date" id="fechaNacimiento" name="fechaNacimiento" max="" required>
+                        </div>
+
+                        <!-- Campo 6: Edad (calculada automáticamente) -->
+                        <div class="form-group">
+                            <label for="edad">
+                                Edad <span class="required">*</span>
+                            </label>
+                            <input type="number" id="edad" name="edad" min="0" max="150" readonly
+                                style="background: #f7fafc;">
+                            <span class="help-text">Calculada automáticamente</span>
+                        </div>
+
+                        <!-- Campo 7: Unidad de medida de edad -->
+                        <div class="form-group">
+                            <label for="unidadEdad">
+                                Unidad de Edad <span class="required">*</span>
+                            </label>
+                            <select id="unidadEdad" name="unidadEdad" required>
+                                <option value="1" selected>Años</option>
+                                <option value="2">Meses</option>
+                                <option value="3">Días</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 8: Sexo -->
+                        <div class="form-group">
+                            <label for="sexo">
+                                Sexo <span class="required">*</span>
+                            </label>
+                            <select id="sexo" name="sexo" required>
+                                <option value="">Seleccione...</option>
+                                <option value="male">Masculino</option>
+                                <option value="female">Femenino</option>
+                                <option value="other">Otro</option>
+                                <option value="unknown">Desconocido</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 9: Género -->
+                        <div class="form-group">
+                            <label for="genero">Género</label>
+                            <select id="genero" name="genero">
+                                <option value="">Seleccione...</option>
+                                <option value="Masculino">Masculino</option>
+                                <option value="Femenino">Femenino</option>
+                                <option value="No binario">No binario</option>
+                                <option value="Otro">Otro</option>
+                                <option value="Prefiero no decir">Prefiero no decir</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 10: Ocupación -->
+                        <div class="form-group">
+                            <label for="ocupacion">Ocupación</label>
+                            <input type="text" id="ocupacion" name="ocupacion"
+                                placeholder="Ingeniero, Médico, Estudiante...">
+                        </div>
+
+                        <!-- Campo 3: País de nacionalidad -->
+                        <div class="form-group">
+                            <label for="paisNacionalidad">
+                                País de Nacionalidad <span class="required">*</span>
+                            </label>
+                            <select id="paisNacionalidad" name="paisNacionalidad" required>
+                                <option value="">Seleccione...</option>
+                                <option value="CO" selected>Colombia</option>
+                                <option value="VE">Venezuela</option>
+                                <option value="EC">Ecuador</option>
+                                <option value="PE">Perú</option>
+                                <option value="BR">Brasil</option>
+                                <option value="AR">Argentina</option>
+                                <option value="US">Estados Unidos</option>
+                                <option value="ES">España</option>
+                                <option value="MX">México</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 13: País de residencia -->
+                        <div class="form-group">
+                            <label for="paisResidencia">
+                                País de Residencia <span class="required">*</span>
+                            </label>
+                            <select id="paisResidencia" name="paisResidencia" required>
+                                <option value="">Seleccione...</option>
+                                <option value="CO" selected>Colombia</option>
+                                <option value="VE">Venezuela</option>
+                                <option value="EC">Ecuador</option>
+                                <option value="PE">Perú</option>
+                                <option value="BR">Brasil</option>
+                                <option value="AR">Argentina</option>
+                                <option value="US">Estados Unidos</option>
+                                <option value="ES">España</option>
+                                <option value="MX">México</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 14: Municipio de residencia -->
+                        <div class="form-group">
+                            <label for="municipioResidencia">
+                                Municipio de Residencia <span class="required">*</span>
+                            </label>
+                            <select id="municipioResidencia" name="municipioResidencia" required>
+                                <option value="">Seleccione...</option>
+                                <option value="11001">Bogotá D.C.</option>
+                                <option value="05001">Medellín</option>
+                                <option value="76001">Cali</option>
+                                <option value="08001">Barranquilla</option>
+                                <option value="13001">Cartagena</option>
+                                <option value="68001">Bucaramanga</option>
+                                <option value="66001">Pereira</option>
+                                <option value="17001">Manizales</option>
+                                <option value="50001">Villavicencio</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 15: Etnia -->
+                        <div class="form-group">
+                            <label for="etnia">Etnia</label>
+                            <select id="etnia" name="etnia">
+                                <option value="">Seleccione...</option>
+                                <option value="Ninguna" selected>Ninguna</option>
+                                <option value="Indígena">Indígena</option>
+                                <option value="ROM (Gitano)">ROM (Gitano)</option>
+                                <option value="Raizal">Raizal</option>
+                                <option value="Palenquero">Palenquero</option>
+                                <option value="Negro, Mulato, Afrodescendiente">Negro, Mulato, Afrodescendiente</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 12: Categoría de discapacidad -->
+                        <div class="form-group">
+                            <label for="categoriaDiscapacidad">Categoría de Discapacidad</label>
+                            <select id="categoriaDiscapacidad" name="categoriaDiscapacidad">
+                                <option value="">Ninguna</option>
+                                <option value="Física">Física</option>
+                                <option value="Mental">Mental</option>
+                                <option value="Sensorial Visual">Sensorial Visual</option>
+                                <option value="Sensorial Auditiva">Sensorial Auditiva</option>
+                                <option value="Múltiple">Múltiple</option>
+                            </select>
+                        </div>
+
+                        <!-- Campo 11: Voluntad anticipada -->
+                        <div class="form-group">
+                            <label for="voluntadAnticipada">Voluntad Anticipada</label>
+                            <select id="voluntadAnticipada" name="voluntadAnticipada">
+                                <option value="">No especificado</option>
+                                <option value="true">Sí</option>
+                                <option value="false" selected>No</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button type="button" class="btn-secondary" onclick="resetForm()">
+                        <i class="ph ph-x-circle"></i>
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn-primary">
+                        <i class="ph ph-check-circle"></i>
+                        Registrar Paciente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Establecer fecha máxima (hoy) para fecha de nacimiento
+        document.getElementById('fechaNacimiento').max = new Date().toISOString().split('T')[0];
+
+        // Calcular edad automáticamente
+        document.getElementById('fechaNacimiento').addEventListener('change', function () {
+            const birthDate = new Date(this.value);
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const monthDiff = today.getMonth() - birthDate.getMonth();
+
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                age--;
+            }
+
+            document.getElementById('edad').value = age;
+        });
+
+        // Mostrar alerta
+        function showAlert(message, type = 'success') {
+            const alert = document.getElementById('alert');
+            alert.className = `alert ${type} show`;
+            alert.innerHTML = `
+                <i class="ph ph-${type === 'success' ? 'check-circle' : 'warning-circle'}"></i>
+                <span>${message}</span>
+            `;
+
+            setTimeout(() => {
+                alert.classList.remove('show');
+            }, 5000);
+        }
+
+        // Resetear formulario
+        function resetForm() {
+            document.getElementById('patientForm').reset();
+            document.getElementById('edad').value = '';
+        }
+
+        // Enviar formulario
+        document.getElementById('patientForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData.entries());
+
+            // Mostrar loading
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('patientForm').style.display = 'none';
+
+            try {
+                const response = await fetch('/api/v1/fhir/patient', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                // Ocultar loading
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('patientForm').style.display = 'block';
+
+                if (response.ok) {
+                    showAlert(`✅ Paciente registrado exitosamente. ID FHIR: ${result.patient_id}`, 'success');
+                    resetForm();
+                } else {
+                    showAlert(`❌ Error: ${result.detail || 'No se pudo registrar el paciente'}`, 'error');
+                }
+            } catch (error) {
+                // Ocultar loading
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('patientForm').style.display = 'block';
+
+                showAlert(`❌ Error de conexión: ${error.message}`, 'error');
+            }
+        });
+    </script>
+</body>
+
+</html>
