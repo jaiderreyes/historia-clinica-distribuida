@@ -1,5 +1,13 @@
 # Sistema de Historia Clínica Distribuida
 
+## 🌍 Language / Idioma
+
+- **Español** - Estás aquí
+- **[English](README.en.md)** - English version
+- **[📚 Índice de Documentación](INDICE.md)** | **[📚 Documentation Index](INDEX.en.md)**
+
+---
+
 ## 🏥 Descripción General
 
 Sistema completo de historia clínica distribuida que implementa fragmentación horizontal de datos sobre PostgreSQL, con una interfaz web de monitoreo y gestión en tiempo real. El sistema simula un entorno de base de datos distribuida utilizando contenedores Docker y un middleware Python para coordinar consultas distribuidas.
