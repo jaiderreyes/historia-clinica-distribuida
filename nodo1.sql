@@ -1,21 +1,26 @@
 -- Nodo 1: Fragmento documento_id < 4000000000
 
 CREATE TABLE usuario (
-    documento_id BIGINT PRIMARY KEY,
-    pais_nacionalidad VARCHAR(100),
-    nombre_completo VARCHAR(255),
-    fecha_nacimiento DATE,
-    edad INT,
-    sexo VARCHAR(10),
-    genero VARCHAR(20),
-    ocupacion VARCHAR(100),
-    voluntad_anticipada BOOLEAN,
-    categoria_discapacidad VARCHAR(50),
-    pais_residencia VARCHAR(100),
-    municipio_residencia VARCHAR(100),
-    etnia VARCHAR(50),
-    comunidad_etnica VARCHAR(100),
-    zona_residencia VARCHAR(50)
+    documento_id            BIGINT PRIMARY KEY,
+    tipo_documento          VARCHAR(10),
+    pais_nacionalidad       VARCHAR(100),
+    nombre_completo         VARCHAR(255) NOT NULL,
+    fecha_nacimiento        DATE,
+    edad                    INT,
+    unidad_edad             VARCHAR(5)   DEFAULT '1',
+    sexo                    VARCHAR(10),
+    genero                  VARCHAR(50),
+    ocupacion               VARCHAR(100),
+    voluntad_anticipada     BOOLEAN      DEFAULT FALSE,
+    categoria_discapacidad  VARCHAR(50),
+    pais_residencia         VARCHAR(100),
+    municipio_residencia    VARCHAR(100),
+    etnia                   VARCHAR(50),
+    comunidad_etnica        VARCHAR(100),
+    zona_residencia         VARCHAR(50),
+    fhir_patient_id         VARCHAR(64),
+    created_at              TIMESTAMP    DEFAULT NOW(),
+    updated_at              TIMESTAMP    DEFAULT NOW()
 );
 
 

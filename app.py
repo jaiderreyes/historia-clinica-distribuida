@@ -8,6 +8,7 @@ import os
 import sys
 import middleware
 import psycopg2
+from fastapi_mcp import FastApiMCP
 
 # Agregar backend al path para imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
@@ -15,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 from fhir_app.models.patient_model import PatientIdentificationData
 from fhir_app.transformers.fhir_transformer import FHIRTransformer
 from fhir_app.services.fhir_service import FHIRService
+from fhir_app.services.db_service import DBService
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -52,15 +54,33 @@ else:
     ]
 
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
+from fastapi.responses import HTMLResponse, RedirectResponse
+
+
+@app.get("/", response_class=RedirectResponse)
+async def root_redirect():
+    return RedirectResponse(url="/home", status_code=302)
+
+
+@app.get("/home", response_class=HTMLResponse)
+@app.get("/home/", response_class=HTMLResponse)
+async def home_page():
+    """Pantalla de inicio — hub de navegación entre módulos"""
+    with open(os.path.join(BASE_DIR, "templates", "home.html"), "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/dashboard/", response_class=HTMLResponse)
+async def dashboard_page():
+    """Nodes Monitor — estado de los nodos PostgreSQL y simulador de queries"""
     with open(os.path.join(BASE_DIR, "templates", "index.html"), "r", encoding="utf-8") as f:
         return f.read()
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "carga_hc": "/carga-hc", "hc": "/hc"}
+    return {"status": "ok", "home": "/home", "medico": "/medico", "admision": "/admision", "carga_hc": "/carga-hc", "hc": "/hc"}
 
 
 @app.get("/hc", response_class=HTMLResponse)
@@ -137,8 +157,222 @@ async def execute_query(request: QueryRequest):
 # ENDPOINTS FHIR - MVP
 # ============================================================================
 
-# Inicializar servicio FHIR
+# Inicializar servicios
 fhir_service = FHIRService()
+db_service = DBService()
+
+
+# ============================================================================
+# ENDPOINTS DE ADMISIÓN — Flujo de llegada de nuevo paciente
+# Estándar HL7 FHIR R4 + DB Distribuida
+# ============================================================================
+
+@app.get("/admision", response_class=HTMLResponse)
+@app.get("/admision/", response_class=HTMLResponse)
+async def admision_page():
+    """Vista de admisión: verifica si el paciente existe antes de registrarlo"""
+    try:
+        with open(os.path.join(BASE_DIR, "templates", "admision-paciente.html"), "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Plantilla admision-paciente.html no encontrada")
+
+
+@app.get("/api/v1/admision/verificar/{documento_id}")
+async def verificar_paciente(documento_id: str):
+    """
+    Punto de entrada principal del flujo de admisión.
+
+    Estrategia de búsqueda (HL7 Patient Matching):
+    1. Busca en la DB local distribuida (PostgreSQL, nodo según fragmentación)
+    2. Si no está en DB, busca en HAPI FHIR por identifier
+    3. Retorna: encontrado_local, encontrado_fhir, datos_paciente
+
+    Basado en IHE PIX/PDQ y HL7 FHIR R4 Patient $match.
+    """
+    try:
+        doc_id_int = int(documento_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="documento_id debe ser numérico")
+
+    resultado = {
+        "documento_id": documento_id,
+        "encontrado_local": False,
+        "encontrado_fhir": False,
+        "paciente_local": None,
+        "paciente_fhir": None,
+        "nodo_asignado": None,
+        "accion_recomendada": "registrar",
+    }
+
+    # 1. Buscar en DB local
+    try:
+        paciente_local = DBService.buscar_paciente(doc_id_int)
+        if paciente_local:
+            resultado["encontrado_local"] = True
+            resultado["paciente_local"] = paciente_local
+            resultado["accion_recomendada"] = "admitir_existente"
+    except Exception as e:
+        resultado["error_local"] = str(e)
+
+    # 2. Buscar en HAPI FHIR si no está en local o para enriquecer
+    try:
+        bundle = await fhir_service.search_patient_by_identifier(documento_id)
+        entries = bundle.get("entry", [])
+        if entries:
+            resultado["encontrado_fhir"] = True
+            resultado["paciente_fhir"] = entries[0]["resource"]
+            if not resultado["encontrado_local"]:
+                resultado["accion_recomendada"] = "importar_de_fhir"
+    except Exception as e:
+        resultado["error_fhir"] = str(e)
+
+    # 3. Determinar nodo asignado
+    if doc_id_int < 4_000_000_000:
+        resultado["nodo_asignado"] = "nodo1 (doc < 4.000.000.000)"
+    elif doc_id_int < 7_000_000_000:
+        resultado["nodo_asignado"] = "nodo2 (4B – 7B)"
+    else:
+        resultado["nodo_asignado"] = "nodo3 (doc ≥ 7.000.000.000)"
+
+    return resultado
+
+
+@app.post("/api/v1/admision/registrar")
+async def registrar_admision(data: PatientIdentificationData):
+    """
+    Registra un paciente nuevo en el sistema de forma dual:
+    1. Crea el recurso FHIR Patient en HAPI FHIR (estándar HL7 R4)
+    2. Persiste en la DB local distribuida con el fhir_patient_id vinculado
+
+    Si el paciente ya existe en alguno de los dos sistemas, retorna
+    su información sin duplicar (idempotente).
+    """
+    data_dict = data.dict()
+    doc_id = int(data_dict["numeroDocumento"])
+
+    # 1. Verificar si ya existe localmente
+    existente_local = None
+    try:
+        existente_local = DBService.buscar_paciente(doc_id)
+    except Exception:
+        pass
+
+    fhir_id = None
+    fhir_result = None
+
+    # 2. Crear/buscar en HAPI FHIR
+    try:
+        # Primero verificar si ya existe en FHIR
+        bundle = await fhir_service.search_patient_by_identifier(str(doc_id))
+        entries = bundle.get("entry", [])
+        if entries:
+            fhir_result = entries[0]["resource"]
+            fhir_id = fhir_result.get("id")
+        else:
+            # Crear en FHIR
+            patient_resource = FHIRTransformer.to_fhir_patient(data_dict)
+            fhir_result = await fhir_service.create_patient(patient_resource)
+            fhir_id = fhir_result.get("id")
+    except Exception as e:
+        # FHIR no disponible — continuar solo con DB local
+        fhir_result = {"error": str(e), "nota": "HAPI FHIR no disponible, registrado solo en DB local"}
+
+    # 3. Persistir en DB local
+    try:
+        db_resultado = DBService.insertar_paciente(data_dict, fhir_patient_id=fhir_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en DB local: {str(e)}")
+
+    return {
+        "success": True,
+        "accion": db_resultado["accion"],
+        "nodo": db_resultado["nodo"],
+        "fhir_patient_id": fhir_id,
+        "paciente_local": db_resultado["paciente"],
+        "fhir_resource": fhir_result,
+        "mensaje": (
+            f"Paciente {'encontrado' if db_resultado['accion'] == 'existente' else 'creado'} "
+            f"en {db_resultado['nodo']} con FHIR ID: {fhir_id}"
+        )
+    }
+
+
+@app.get("/api/v1/admision/tablas/estado")
+async def estado_tablas_db():
+    """
+    Verifica si las tablas del esquema clínico existen en los 3 nodos.
+    Útil para diagnóstico en la vista de admisión.
+    """
+    return {"nodos": DBService.estado_tablas()}
+
+
+@app.post("/api/v1/admision/tablas/inicializar")
+async def inicializar_tablas_db():
+    """
+    Crea las tablas (CREATE TABLE IF NOT EXISTS) en todos los nodos.
+    Operación idempotente — segura de ejecutar múltiples veces.
+    """
+    resultado = DBService.inicializar_tablas()
+    return resultado
+
+
+@app.get("/api/v1/admision/buscar")
+async def buscar_pacientes(
+    nombre: str = "",
+    documento: str = ""
+):
+    """
+    Búsqueda unificada de pacientes:
+    - Por nombre: busca en todos los nodos (LIKE)
+    - Por documento: va directamente al nodo correcto + FHIR
+    """
+    if not nombre and not documento:
+        raise HTTPException(status_code=400, detail="Proporciona 'nombre' o 'documento'")
+
+    resultados_db = []
+    resultados_fhir = []
+
+    if documento:
+        try:
+            doc_int = int(documento)
+            p = DBService.buscar_paciente(doc_int)
+            if p:
+                resultados_db.append(p)
+        except Exception:
+            pass
+
+        try:
+            bundle = await fhir_service.search_patient_by_identifier(documento)
+            if bundle.get("entry"):
+                resultados_fhir = [e["resource"] for e in bundle["entry"]]
+        except Exception:
+            pass
+
+    if nombre:
+        try:
+            resultados_db.extend(DBService.buscar_por_nombre(nombre))
+        except Exception:
+            pass
+
+        try:
+            async with __import__('httpx').AsyncClient(timeout=15.0) as client:
+                r = await client.get(
+                    f"{fhir_service.base_url}/Patient",
+                    params={"name": nombre},
+                    headers={"Accept": "application/fhir+json"}
+                )
+                if r.status_code == 200 and r.json().get("entry"):
+                    resultados_fhir.extend([e["resource"] for e in r.json()["entry"]])
+        except Exception:
+            pass
+
+    return {
+        "total_local": len(resultados_db),
+        "total_fhir": len(resultados_fhir),
+        "resultados_local": resultados_db,
+        "resultados_fhir": resultados_fhir,
+    }
 
 @app.get("/registro-paciente", response_class=HTMLResponse)
 @app.get("/registro-paciente/", response_class=HTMLResponse)
@@ -559,14 +793,376 @@ async def firh_cargar(body: FirhCargarBody):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# MÓDULO MÉDICO
+# ============================================================================
+
+@app.get("/medico", response_class=HTMLResponse)
+@app.get("/medico/", response_class=HTMLResponse)
+async def medico_page():
+    """Dashboard del médico: búsqueda, historia clínica, atención, diagnóstico y prescripción"""
+    try:
+        with open(os.path.join(BASE_DIR, "templates", "medico.html"), "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Módulo médico no encontrado")
+
+
+class AtencionRequest(BaseModel):
+    documento_id: int
+    entidad_salud: str = ""
+    fecha_ingreso: str
+    modalidad_entrega: str = ""
+    entorno_atencion: str = ""
+    via_ingreso: str = ""
+    causa_atencion: str = ""
+    fecha_triage: str = None
+    clasificacion_triage: str = None
+
+
+class DiagnosticoRequest(BaseModel):
+    documento_id: int
+    atencion_id: int
+    tipo_diagnostico_ingreso: str = None
+    diagnostico_ingreso: str = None
+    tipo_diagnostico_egreso: str = None
+    diagnostico_egreso: str = None
+    diagnostico_rel1: str = None
+    diagnostico_rel2: str = None
+    diagnostico_rel3: str = None
+
+
+class MedicamentoItem(BaseModel):
+    documento_id: int
+    atencion_id: int
+    tecnologia_id: str = None
+    descripcion_medicamento: str = None
+    dosis: str = None
+    via_administracion: str = None
+    frecuencia: str = None
+    dias_tratamiento: int = None
+    unidades_aplicadas: int = None
+
+
+class PrescripcionRequest(BaseModel):
+    medicamentos: list[MedicamentoItem]
+
+
+def _conectar_nodo(doc_id: int):
+    """Retorna una conexión psycopg2 al nodo correcto según doc_id."""
+    USE_DOCKER = os.getenv("USE_DOCKER_NAMES", "false").lower() == "true"
+    if doc_id < 4_000_000_000:
+        host, port = ("pg_nodo1", 5432) if USE_DOCKER else ("localhost", 5433)
+        nodo_name = "nodo1 (pg_nodo1)"
+    elif doc_id < 7_000_000_000:
+        host, port = ("pg_nodo2", 5432) if USE_DOCKER else ("localhost", 5434)
+        nodo_name = "nodo2 (pg_nodo2)"
+    else:
+        host, port = ("pg_nodo3", 5432) if USE_DOCKER else ("localhost", 5435)
+        nodo_name = "nodo3 (pg_nodo3)"
+    conn = psycopg2.connect(host=host, port=port, user="admin", password="admin",
+                            dbname="historia_clinica", connect_timeout=5)
+    return conn, nodo_name
+
+
+@app.get("/api/v1/medico/historia/{documento_id}")
+async def historia_clinica(documento_id: int):
+    """
+    Retorna la historia clínica completa de un paciente desde la DB distribuida:
+    atenciones, diagnósticos y medicamentos.
+    """
+    try:
+        conn, nodo = _conectar_nodo(documento_id)
+        from psycopg2.extras import RealDictCursor
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Atenciones
+            cur.execute(
+                "SELECT * FROM atencion WHERE documento_id = %s ORDER BY fecha_ingreso DESC;",
+                (documento_id,)
+            )
+            atenciones = [dict(r) for r in cur.fetchall()]
+
+            # IDs de atenciones para joins
+            ids = [a["atencion_id"] for a in atenciones]
+
+            diagnosticos = []
+            medicamentos = []
+            if ids:
+                cur.execute(
+                    "SELECT * FROM diagnostico WHERE atencion_id = ANY(%s);", (ids,)
+                )
+                diagnosticos = [dict(r) for r in cur.fetchall()]
+
+                cur.execute(
+                    "SELECT * FROM tecnologia_salud WHERE atencion_id = ANY(%s);", (ids,)
+                )
+                medicamentos = [dict(r) for r in cur.fetchall()]
+
+        conn.close()
+
+        # serializar campos no JSON-serializable (fechas, UUID)
+        import json
+        from datetime import date, datetime
+        from uuid import UUID
+
+        def serial(obj):
+            if isinstance(obj, (datetime, date)): return obj.isoformat()
+            if isinstance(obj, UUID): return str(obj)
+            raise TypeError(f"{type(obj)} not serializable")
+
+        return {
+            "documento_id": documento_id,
+            "nodo": nodo,
+            "total_atenciones": len(atenciones),
+            "total_diagnosticos": len(diagnosticos),
+            "total_medicamentos": len(medicamentos),
+            "atenciones":   json.loads(json.dumps(atenciones, default=serial)),
+            "diagnosticos": json.loads(json.dumps(diagnosticos, default=serial)),
+            "medicamentos": json.loads(json.dumps(medicamentos, default=serial)),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error consultando historia: {str(e)}")
+
+
+@app.post("/api/v1/medico/atencion")
+async def registrar_atencion(data: AtencionRequest):
+    """Registra una nueva atención en el nodo distribuido correcto."""
+    try:
+        conn, nodo = _conectar_nodo(data.documento_id)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO atencion
+                  (documento_id, entidad_salud, fecha_ingreso, modalidad_entrega,
+                   entorno_atencion, via_ingreso, causa_atencion, fecha_triage, clasificacion_triage)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING atencion_id;
+            """, (
+                data.documento_id,
+                data.entidad_salud or None,
+                data.fecha_ingreso,
+                data.modalidad_entrega or None,
+                data.entorno_atencion or None,
+                data.via_ingreso or None,
+                data.causa_atencion or None,
+                data.fecha_triage or None,
+                data.clasificacion_triage or None,
+            ))
+            atencion_id = cur.fetchone()[0]
+            conn.commit()
+        conn.close()
+        return {"success": True, "atencion_id": atencion_id, "nodo": nodo}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error registrando atención: {str(e)}")
+
+
+@app.post("/api/v1/medico/diagnostico")
+async def registrar_diagnostico(data: DiagnosticoRequest):
+    """Guarda un diagnóstico vinculado a una atención en el nodo correcto."""
+    try:
+        conn, nodo = _conectar_nodo(data.documento_id)
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO diagnostico
+                  (atencion_id, tipo_diagnostico_ingreso, diagnostico_ingreso,
+                   tipo_diagnostico_egreso, diagnostico_egreso,
+                   diagnostico_rel1, diagnostico_rel2, diagnostico_rel3)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING diagnostico_id;
+            """, (
+                data.atencion_id,
+                data.tipo_diagnostico_ingreso,
+                data.diagnostico_ingreso,
+                data.tipo_diagnostico_egreso,
+                data.diagnostico_egreso,
+                data.diagnostico_rel1,
+                data.diagnostico_rel2,
+                data.diagnostico_rel3,
+            ))
+            dx_id = cur.fetchone()[0]
+            conn.commit()
+        conn.close()
+        return {"success": True, "diagnostico_id": dx_id, "nodo": nodo}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error guardando diagnóstico: {str(e)}")
+
+
+@app.post("/api/v1/medico/prescripcion")
+async def guardar_prescripcion(body: PrescripcionRequest):
+    """Guarda uno o más medicamentos (tecnologia_salud) en el nodo correcto."""
+    if not body.medicamentos:
+        raise HTTPException(status_code=400, detail="Sin medicamentos")
+    doc_id = body.medicamentos[0].documento_id
+    try:
+        conn, nodo = _conectar_nodo(doc_id)
+        inserted = 0
+        with conn.cursor() as cur:
+            for m in body.medicamentos:
+                import uuid
+                tid = m.tecnologia_id or str(uuid.uuid4())
+                cur.execute("""
+                    INSERT INTO tecnologia_salud
+                      (tecnologia_id, atencion_id, descripcion_medicamento, dosis,
+                       via_administracion, frecuencia, dias_tratamiento, unidades_aplicadas)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s);
+                """, (
+                    tid, m.atencion_id, m.descripcion_medicamento, m.dosis,
+                    m.via_administracion, m.frecuencia, m.dias_tratamiento, m.unidades_aplicadas,
+                ))
+                inserted += 1
+            conn.commit()
+        conn.close()
+        return {"success": True, "total": inserted, "nodo": nodo}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error guardando prescripción: {str(e)}")
+
+
+# ============================================================================
+# ENDPOINTS DE GESTIÓN DE PROFESIONALES DE SALUD (MÉDICOS)
+# ============================================================================
+
+from fhir_app.models.patient_model import ProfesionalSaludData, ProfesionalSaludUpdate
+
+
+@app.get("/api/v1/profesionales")
+async def listar_profesionales(
+    activos: bool = True,
+    especialidad: str = None,
+    limite: int = 100
+):
+    """
+    Lista todos los profesionales de salud.
+
+    Query params:
+    - activos: Filtrar solo activos (default: true)
+    - especialidad: Filtrar por especialidad (opcional)
+    - limite: Límite de resultados (default: 100)
+    """
+    try:
+        profesionales = DBService.listar_profesionales(
+            activos_only=activos,
+            especialidad=especialidad,
+            limite=limite
+        )
+        return {
+            "success": True,
+            "total": len(profesionales),
+            "profesionales": profesionales
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listando profesionales: {str(e)}")
+
+
+@app.get("/api/v1/profesionales/{profesional_id}")
+async def obtener_profesional(profesional_id: str):
+    """Obtiene un profesional por su ID."""
+    try:
+        profesional = DBService.obtener_profesional(profesional_id)
+        if not profesional:
+            raise HTTPException(status_code=404, detail="Profesional no encontrado")
+        return {
+            "success": True,
+            "profesional": profesional
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo profesional: {str(e)}")
+
+
+@app.post("/api/v1/profesionales")
+async def crear_profesional(data: ProfesionalSaludData):
+    """
+    Crea un nuevo profesional de salud.
+
+    Campos requeridos:
+    - nombre: Nombre completo del profesional
+
+    Campos opcionales:
+    - especialidad, registroMedico, entidadSalud, email, telefono, activo
+    """
+    try:
+        resultado = DBService.crear_profesional(data.dict())
+        return resultado
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creando profesional: {str(e)}")
+
+
+@app.put("/api/v1/profesionales/{profesional_id}")
+async def actualizar_profesional(profesional_id: str, data: ProfesionalSaludUpdate):
+    """
+    Actualiza un profesional existente.
+    Solo actualiza los campos proporcionados.
+    """
+    try:
+        resultado = DBService.actualizar_profesional(profesional_id, data.dict(exclude_unset=True))
+        if not resultado:
+            raise HTTPException(status_code=404, detail="Profesional no encontrado")
+        return resultado
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error actualizando profesional: {str(e)}")
+
+
+@app.delete("/api/v1/profesionales/{profesional_id}")
+async def eliminar_profesional(profesional_id: str):
+    """Elimina un profesional de la base de datos."""
+    try:
+        deleted = DBService.eliminar_profesional(profesional_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Profesional no encontrado")
+        return {
+            "success": True,
+            "mensaje": "Profesional eliminado correctamente"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error eliminando profesional: {str(e)}")
+
+
+@app.get("/api/v1/profesionales/buscar/{nombre}")
+async def buscar_profesionales(nombre: str, limite: int = 20):
+    """Busca profesionales por nombre (búsqueda parcial)."""
+    try:
+        profesionales = DBService.buscar_profesionales_por_nombre(nombre, limite)
+        return {
+            "success": True,
+            "total": len(profesionales),
+            "query": nombre,
+            "profesionales": profesionales
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error buscando profesionales: {str(e)}")
+
+
 # Estáticos al final para no tapar rutas
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+
+# ============================================================================
+# MCP - Model Context Protocol
+# Expone todos los endpoints de la API como herramientas para agentes de IA
+# ============================================================================
+mcp = FastApiMCP(
+    app,
+    name="Historia Clínica Distribuida MCP",
+    description=(
+        "Servidor MCP del sistema de Historia Clínica Distribuida. "
+        "Permite a agentes de IA consultar y gestionar pacientes FHIR, "
+        "ejecutar queries SQL distribuidas, y monitorear el estado de los nodos PostgreSQL."
+    ),
+)
+mcp.mount()  # Disponible en /mcp
 
 PORT = 8001
 
 if __name__ == "__main__":
     import uvicorn
-    print("\n  → Dashboard: http://localhost:{}".format(PORT))
-    print("  → Carga HC:  http://localhost:{}/carga-hc".format(PORT))
-    print("  → Health:    http://localhost:{}/api/health\n".format(PORT))
+    print("\n  → Dashboard:  http://localhost:{}".format(PORT))
+    print("  → Admisión:   http://localhost:{}/admision".format(PORT))
+    print("  → Médico:     http://localhost:{}/medico".format(PORT))
+    print("  → Consulta:   http://localhost:{}/consulta-hc".format(PORT))
+    print("  → Carga HC:   http://localhost:{}/carga-hc".format(PORT))
+    print("  → Health:     http://localhost:{}/api/health".format(PORT))
+    print("  → MCP Server: http://localhost:{}/mcp\n".format(PORT))
     uvicorn.run(app, host="0.0.0.0", port=PORT)

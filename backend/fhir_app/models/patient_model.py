@@ -72,3 +72,40 @@ class PatientIdentificationData(BaseModel):
                 "etnia": "Ninguna"
             }
         }
+
+
+class ProfesionalSaludData(BaseModel):
+    """Modelo para profesionales de salud (médicos)"""
+
+    nombre: str = Field(..., description="Nombre completo del profesional")
+    especialidad: Optional[str] = Field(None, description="Especialidad médica")
+    registroMedico: Optional[str] = Field(None, description="Número de registro médico")
+    entidadSalud: Optional[str] = Field(None, description="Entidad de salud donde labora")
+    email: Optional[str] = Field(None, description="Correo electrónico")
+    telefono: Optional[str] = Field(None, description="Teléfono de contacto")
+    activo: bool = Field(default=True, description="Estado activo/inactivo")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "nombre": "Dr. María González",
+                "especialidad": "Cardiología",
+                "registroMedico": "RM-12345",
+                "entidadSalud": "Hospital Central",
+                "email": "maria.gonzalez@hospital.gov.co",
+                "telefono": "+57 300 123 4567",
+                "activo": True
+            }
+        }
+
+
+class ProfesionalSaludUpdate(BaseModel):
+    """Modelo para actualizar profesionales de salud (todos los campos opcionales)"""
+
+    nombre: Optional[str] = Field(None, description="Nombre completo del profesional")
+    especialidad: Optional[str] = Field(None, description="Especialidad médica")
+    registroMedico: Optional[str] = Field(None, description="Número de registro médico")
+    entidadSalud: Optional[str] = Field(None, description="Entidad de salud donde labora")
+    email: Optional[str] = Field(None, description="Correo electrónico")
+    telefono: Optional[str] = Field(None, description="Teléfono de contacto")
+    activo: Optional[bool] = Field(None, description="Estado activo/inactivo")

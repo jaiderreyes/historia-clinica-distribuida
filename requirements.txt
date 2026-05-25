@@ -1,6 +1,8 @@
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
 psycopg2-binary==2.9.9
-pydantic==2.5.3
-fhir.resources==7.1.0
-httpx==0.26.0
+pydantic>=2.7.2
+fhir.resources>=7.1.0
+httpx>=0.27.0
+fastapi-mcp>=0.3.3
+mcp>=1.6.0

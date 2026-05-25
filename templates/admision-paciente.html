@@ -1,0 +1,1427 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admisión de Paciente — Historia Clínica Distribuida</title>
+    <meta name="description"
+        content="Sistema de admisión de pacientes con verificación distribuida y estándar HL7 FHIR R4" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #a5b4fc;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --bg: #0f0f1a;
+            --surface: #1a1a2e;
+            --surface2: #16213e;
+            --surface3: #1e293b;
+            --border: rgba(99, 102, 241, 0.2);
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --radius: 16px;
+            --shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Fondo animado ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: radial-gradient(ellipse at 20% 20%, rgba(99, 102, 241, .15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(139, 92, 246, .12) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 4rem;
+        }
+
+        /* ── Header ── */
+        .header {
+            text-align: center;
+            padding: 2.5rem 0 2rem;
+        }
+
+        .header-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .5rem;
+            background: rgba(99, 102, 241, .15);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: .4rem 1rem;
+            font-size: .8rem;
+            color: var(--primary-light);
+            margin-bottom: 1.2rem;
+            letter-spacing: .05em;
+        }
+
+        .header h1 {
+            font-size: 2.4rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #e2e8f0 30%, var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: .6rem;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: .95rem;
+        }
+
+        /* ── Steps ── */
+        .steps {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+            margin-bottom: 2.5rem;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+        }
+
+        .step-num {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: .85rem;
+            border: 2px solid var(--border);
+            color: var(--text-muted);
+            transition: all .4s;
+        }
+
+        .step-num.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+            box-shadow: 0 0 20px rgba(99, 102, 241, .5);
+        }
+
+        .step-num.done {
+            background: var(--success);
+            border-color: var(--success);
+            color: #fff;
+        }
+
+        .step-label {
+            font-size: .8rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            transition: color .4s;
+        }
+
+        .step-label.active {
+            color: var(--text);
+        }
+
+        .step-line {
+            flex: 1;
+            height: 2px;
+            background: var(--border);
+            margin: 0 .5rem;
+            min-width: 40px;
+            transition: background .4s;
+        }
+
+        .step-line.done {
+            background: var(--success);
+        }
+
+        /* ── Card ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: all .3s;
+        }
+
+        /* ── Search Step ── */
+        .search-wrap {
+            display: flex;
+            gap: .75rem;
+            align-items: flex-end;
+        }
+
+        .search-wrap .field {
+            flex: 1;
+        }
+
+        label.lbl {
+            display: block;
+            font-size: .8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: .5rem;
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+
+        .doc-type-row {
+            display: grid;
+            grid-template-columns: 160px 1fr;
+            gap: .75rem;
+            margin-bottom: 1rem;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: .75rem 1rem;
+            background: var(--surface2);
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            font-size: .95rem;
+            transition: all .3s;
+            outline: none;
+        }
+
+        input:focus,
+        select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, .15);
+        }
+
+        select option {
+            background: var(--surface2);
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .8rem 1.6rem;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: .9rem;
+            cursor: pointer;
+            transition: all .3s;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px rgba(99, 102, 241, .4);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 28px rgba(16, 185, 129, .4);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1.5px solid var(--border);
+        }
+
+        .btn-ghost:hover {
+            border-color: var(--primary);
+            color: var(--text);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #fff;
+        }
+
+        .btn:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        /* ── Status card ── */
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .status-card {
+            padding: 1.2rem;
+            border-radius: 12px;
+            border: 1.5px solid;
+            display: flex;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .status-card.found {
+            background: rgba(16, 185, 129, .08);
+            border-color: rgba(16, 185, 129, .3);
+        }
+
+        .status-card.not-found {
+            background: rgba(239, 68, 68, .06);
+            border-color: rgba(239, 68, 68, .2);
+        }
+
+        .status-card.loading-card {
+            background: rgba(99, 102, 241, .06);
+            border-color: var(--border);
+        }
+
+        .status-icon {
+            font-size: 1.8rem;
+            flex-shrink: 0;
+        }
+
+        .status-card h3 {
+            font-size: .9rem;
+            font-weight: 700;
+            margin-bottom: .3rem;
+        }
+
+        .status-card.found h3 {
+            color: var(--success);
+        }
+
+        .status-card.not-found h3 {
+            color: var(--danger);
+        }
+
+        .status-card p {
+            font-size: .8rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .status-card .detail {
+            font-size: .75rem;
+            color: var(--text-muted);
+            margin-top: .4rem;
+        }
+
+        /* ── Patient summary card ── */
+        .patient-found {
+            background: linear-gradient(135deg, rgba(16, 185, 129, .1), rgba(16, 185, 129, .05));
+            border: 1.5px solid rgba(16, 185, 129, .3);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .patient-found-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .patient-name {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .patient-meta {
+            font-size: .8rem;
+            color: var(--text-muted);
+        }
+
+        .patient-fields {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: .75rem;
+        }
+
+        .pf {
+            background: var(--surface2);
+            border-radius: 8px;
+            padding: .7rem;
+        }
+
+        .pf-label {
+            font-size: .7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: .2rem;
+        }
+
+        .pf-value {
+            font-size: .85rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* ── Node badge ── */
+        .node-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            padding: .3rem .8rem;
+            border-radius: 999px;
+            font-size: .75rem;
+            font-weight: 600;
+            background: rgba(99, 102, 241, .15);
+            color: var(--primary-light);
+            border: 1px solid var(--border);
+        }
+
+        .fhir-badge {
+            background: rgba(59, 130, 246, .15);
+            color: #93c5fd;
+            border-color: rgba(59, 130, 246, .3);
+        }
+
+        /* ── Form sections ── */
+        .form-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-section-title {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            font-size: .85rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            margin-bottom: 1rem;
+            padding-bottom: .5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .form-grid .full {
+            grid-column: 1/-1;
+        }
+
+        /* ── Alert ── */
+        .alert {
+            display: none;
+            align-items: flex-start;
+            gap: .75rem;
+            padding: 1rem 1.2rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            font-size: .88rem;
+            line-height: 1.5;
+        }
+
+        .alert.show {
+            display: flex;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, .1);
+            border: 1px solid rgba(16, 185, 129, .3);
+            color: #6ee7b7;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, .1);
+            border: 1px solid rgba(239, 68, 68, .3);
+            color: #fca5a5;
+        }
+
+        .alert-info {
+            background: rgba(99, 102, 241, .1);
+            border: 1px solid var(--border);
+            color: var(--primary-light);
+        }
+
+        /* ── Spinner ── */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2.5px solid rgba(255, 255, 255, .2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ── Step panels ── */
+        .step-panel {
+            display: none;
+        }
+
+        .step-panel.active {
+            display: block;
+            animation: fadeIn .35s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ── Action buttons row ── */
+        .action-row {
+            display: flex;
+            gap: .75rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        /* ── Nav ── */
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.5rem;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--text);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: .5rem;
+        }
+
+        .nav-link {
+            padding: .4rem .9rem;
+            border-radius: 8px;
+            font-size: .82rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all .2s;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, .05);
+            color: var(--text);
+        }
+
+        .nav-link.active {
+            background: rgba(99, 102, 241, .15);
+            color: var(--primary-light);
+        }
+
+        @media(max-width:640px) {
+
+            .doc-type-row,
+            .status-grid,
+            .patient-fields,
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.7rem;
+            }
+
+            .search-wrap {
+                flex-direction: column;
+            }
+        }
+        /* ── Triage cards ── */
+        .triage-option { cursor: pointer; }
+        .triage-option input[type="radio"] { display: none; }
+        .triage-card {
+            border: 2px solid;
+            border-radius: 12px;
+            padding: 1rem .75rem;
+            text-align: center;
+            transition: all .2s;
+            user-select: none;
+        }
+        .triage-option:hover .triage-card { transform: translateY(-3px); }
+        .triage-option input:checked + .triage-card {
+            box-shadow: 0 0 0 3px rgba(255,255,255,.35);
+            transform: translateY(-3px);
+            filter: brightness(1.25);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Navbar -->
+    <nav class="nav">
+        <div class="nav-brand"><i class="ph ph-heartbeat"></i> HC Distribuida</div>
+        <div class="nav-links">
+            <a href="/" class="nav-link">Dashboard</a>
+            <a href="/admision" class="nav-link active">Admisión</a>
+            <a href="/medico" class="nav-link">Médico</a>
+            <a href="/consulta-hc" class="nav-link">Consulta</a>
+            <a href="/carga-hc" class="nav-link">Carga HC</a>
+        </div>
+    </nav>
+
+    <div class="page">
+
+        <!-- Header -->
+        <div class="header">
+            <div class="header-badge"><i class="ph ph-shield-check"></i> HL7 FHIR R4 · IHE PIX/PDQ</div>
+            <h1>Admisión de Paciente</h1>
+            <p>Verificación automática en base de datos distribuida y servidor HAPI FHIR antes del registro</p>
+        </div>
+
+        <!-- Steps -->
+        <div class="steps" id="stepsBar">
+            <div class="step">
+                <div class="step-num active" id="sn1">1</div>
+                <span class="step-label active" id="sl1">Identificar</span>
+            </div>
+            <div class="step-line" id="line1"></div>
+            <div class="step">
+                <div class="step-num" id="sn2">2</div>
+                <span class="step-label" id="sl2">Verificar</span>
+            </div>
+            <div class="step-line" id="line2"></div>
+            <div class="step">
+                <div class="step-num" id="sn3">3</div>
+                <span class="step-label" id="sl3">Registrar</span>
+            </div>
+            <div class="step-line" id="line3"></div>
+            <div class="step">
+                <div class="step-num" id="sn4">4</div>
+                <span class="step-label" id="sl4">Triage</span>
+            </div>
+        </div>
+
+        <div id="alertBox" class="alert"></div>
+
+        <!-- ══ STEP 1: IDENTIFY ══ -->
+        <div class="step-panel active" id="panel1">
+            <div class="card">
+                <h2
+                    style="font-size:1.1rem;font-weight:700;margin-bottom:1.2rem;display:flex;align-items:center;gap:.5rem;">
+                    <i class="ph ph-identification-card" style="color:var(--primary-light);"></i>
+                    Ingrese el documento del paciente
+                </h2>
+                <div class="doc-type-row">
+                    <div>
+                        <label class="lbl">Tipo Doc.</label>
+                        <select id="tipoDocumento">
+                            <option value="CC">Cédula (CC)</option>
+                            <option value="TI">Tarjeta Identidad (TI)</option>
+                            <option value="CE">Cédula Extranjería (CE)</option>
+                            <option value="PA">Pasaporte (PA)</option>
+                            <option value="RC">Registro Civil (RC)</option>
+                            <option value="MS">Menor sin ID (MS)</option>
+                            <option value="AS">Adulto sin ID (AS)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="lbl">Número de Documento <span style="color:var(--danger)">*</span></label>
+                        <div class="search-wrap">
+                            <input type="text" id="numeroDocumento" placeholder="Ej: 1234567890" inputmode="numeric"
+                                pattern="[0-9]{6,15}" autocomplete="off" />
+                            <button class="btn btn-primary" id="btnBuscar" onclick="buscarPaciente()">
+                                <i class="ph ph-magnifying-glass"></i> Buscar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <p style="font-size:.78rem;color:var(--text-muted);">
+                    <i class="ph ph-info"></i>
+                    El sistema consultará primero la base de datos distribuida y luego el servidor HAPI FHIR R4.
+                </p>
+            </div>
+        </div>
+
+        <!-- ══ STEP 2: VERIFY ══ -->
+        <div class="step-panel" id="panel2">
+            <div class="card">
+                <div
+                    style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;flex-wrap:wrap;gap:.5rem;">
+                    <h2 style="font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:.5rem;">
+                        <i class="ph ph-database" style="color:var(--primary-light);"></i>
+                        Resultado de verificación
+                    </h2>
+                    <div style="display:flex;gap:.5rem;flex-wrap:wrap;" id="badgesContainer"></div>
+                </div>
+
+                <div class="status-grid" id="statusGrid">
+                    <!-- generado por JS -->
+                </div>
+
+                <!-- Paciente encontrado -->
+                <div id="patientFoundCard" style="display:none;">
+                    <div class="patient-found">
+                        <div class="patient-found-header">
+                            <div class="avatar"><i class="ph ph-user"></i></div>
+                            <div>
+                                <div class="patient-name" id="pfNombre">—</div>
+                                <div class="patient-meta" id="pfMeta">—</div>
+                            </div>
+                        </div>
+                        <div class="patient-fields" id="pfFields"></div>
+                    </div>
+                </div>
+
+                <!-- Acciones -->
+                <div class="action-row" id="actionRow"></div>
+
+                <div style="margin-top:1rem;">
+                    <button class="btn btn-ghost" onclick="goToStep(1)">
+                        <i class="ph ph-arrow-left"></i> Nueva búsqueda
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ STEP 3: REGISTER ══ -->
+        <div class="step-panel" id="panel3">
+            <div class="card">
+                <h2
+                    style="font-size:1.1rem;font-weight:700;margin-bottom:1.5rem;display:flex;align-items:center;gap:.5rem;">
+                    <i class="ph ph-user-circle-plus" style="color:var(--primary-light);"></i>
+                    Registro de Nuevo Paciente — <span style="color:var(--primary-light);font-size:.9rem;"
+                        id="docLabel"></span>
+                </h2>
+
+                <form id="registerForm">
+                    <!-- Identificación -->
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="ph ph-identification-card"></i> Identificación</div>
+                        <div class="form-grid">
+                            <div>
+                                <label class="lbl">Tipo Documento</label>
+                                <input type="text" id="rTipoDoc" readonly
+                                    style="background:var(--surface3);cursor:default;" />
+                            </div>
+                            <div>
+                                <label class="lbl">Número Documento</label>
+                                <input type="text" id="rNumDoc" readonly
+                                    style="background:var(--surface3);cursor:default;" />
+                            </div>
+                            <div class="full">
+                                <label class="lbl">Nombre Completo *</label>
+                                <input type="text" id="rNombre" placeholder="Juan Pérez García" required />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Datos demográficos -->
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="ph ph-calendar"></i> Datos Demográficos</div>
+                        <div class="form-grid">
+                            <div>
+                                <label class="lbl">Fecha Nacimiento *</label>
+                                <input type="date" id="rFechaNac" required />
+                            </div>
+                            <div>
+                                <label class="lbl">Edad</label>
+                                <input type="number" id="rEdad" min="0" max="150" readonly
+                                    style="background:var(--surface3);" />
+                            </div>
+                            <div>
+                                <label class="lbl">Unidad Edad</label>
+                                <select id="rUnidadEdad">
+                                    <option value="1">Años</option>
+                                    <option value="2">Meses</option>
+                                    <option value="3">Días</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Sexo Biológico *</label>
+                                <select id="rSexo" required>
+                                    <option value="">Seleccione...</option>
+                                    <option value="male">Masculino</option>
+                                    <option value="female">Femenino</option>
+                                    <option value="other">Otro</option>
+                                    <option value="unknown">Desconocido</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Identidad de Género</label>
+                                <select id="rGenero">
+                                    <option value="">Seleccione...</option>
+                                    <option value="Masculino">Masculino</option>
+                                    <option value="Femenino">Femenino</option>
+                                    <option value="No binario">No binario</option>
+                                    <option value="Prefiero no decir">Prefiero no decir</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Ocupación</label>
+                                <input type="text" id="rOcupacion" placeholder="Ingeniero, Médico..." />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Ubicación -->
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="ph ph-map-pin"></i> Ubicación y Origen</div>
+                        <div class="form-grid">
+                            <div>
+                                <label class="lbl">País Nacionalidad *</label>
+                                <select id="rPaisNac" required>
+                                    <option value="CO" selected>Colombia</option>
+                                    <option value="VE">Venezuela</option>
+                                    <option value="EC">Ecuador</option>
+                                    <option value="PE">Perú</option>
+                                    <option value="BR">Brasil</option>
+                                    <option value="AR">Argentina</option>
+                                    <option value="US">Estados Unidos</option>
+                                    <option value="ES">España</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">País Residencia *</label>
+                                <select id="rPaisRes" required>
+                                    <option value="CO" selected>Colombia</option>
+                                    <option value="VE">Venezuela</option>
+                                    <option value="EC">Ecuador</option>
+                                    <option value="PE">Perú</option>
+                                    <option value="BR">Brasil</option>
+                                    <option value="AR">Argentina</option>
+                                    <option value="US">Estados Unidos</option>
+                                    <option value="ES">España</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Municipio Residencia *</label>
+                                <select id="rMunicipio" required>
+                                    <option value="">Seleccione...</option>
+                                    <option value="11001">Bogotá D.C.</option>
+                                    <option value="05001">Medellín</option>
+                                    <option value="76001">Cali</option>
+                                    <option value="08001">Barranquilla</option>
+                                    <option value="13001">Cartagena</option>
+                                    <option value="68001">Bucaramanga</option>
+                                    <option value="66001">Pereira</option>
+                                    <option value="17001">Manizales</option>
+                                    <option value="50001">Villavicencio</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Etnia</label>
+                                <select id="rEtnia">
+                                    <option value="Ninguna" selected>Ninguna</option>
+                                    <option value="Indígena">Indígena</option>
+                                    <option value="ROM (Gitano)">ROM (Gitano)</option>
+                                    <option value="Raizal">Raizal</option>
+                                    <option value="Palenquero">Palenquero</option>
+                                    <option value="Negro, Mulato, Afrodescendiente">Negro, Mulato, Afrodescendiente
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Discapacidad</label>
+                                <select id="rDiscapacidad">
+                                    <option value="">Ninguna</option>
+                                    <option value="Física">Física</option>
+                                    <option value="Mental">Mental</option>
+                                    <option value="Sensorial Visual">Sensorial Visual</option>
+                                    <option value="Sensorial Auditiva">Sensorial Auditiva</option>
+                                    <option value="Múltiple">Múltiple</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Voluntad Anticipada</label>
+                                <select id="rVoluntad">
+                                    <option value="false" selected>No</option>
+                                    <option value="true">Sí</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div
+                        style="display:flex;gap:.75rem;flex-wrap:wrap;padding-top:1rem;border-top:1px solid var(--border);">
+                        <button type="button" class="btn btn-ghost" onclick="goToStep(2)">
+                            <i class="ph ph-arrow-left"></i> Atrás
+                        </button>
+                        <button type="submit" class="btn btn-success" id="btnRegistrar">
+                            <i class="ph ph-user-circle-plus"></i> Registrar en DB + FHIR
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- ══ STEP 4: TRIAGE ══ -->
+        <div class="step-panel" id="panel4">
+            <div class="card">
+                <h2 style="font-size:1.1rem;font-weight:700;margin-bottom:1.5rem;display:flex;align-items:center;gap:.5rem;">
+                    <i class="ph ph-first-aid" style="color:var(--primary-light);"></i>
+                    Admisión y Clasificación de Triage &mdash; <span style="color:var(--primary-light);font-size:.9rem;" id="triageDocLabel"></span>
+                </h2>
+                <form id="triageForm">
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="ph ph-hospital"></i> Datos de la Atención</div>
+                        <div class="form-grid">
+                            <div>
+                                <label class="lbl">Entidad de Salud</label>
+                                <input type="text" id="tEntidad" placeholder="EPS / IPS / Hospital..." />
+                            </div>
+                            <div>
+                                <label class="lbl">Fecha y Hora de Ingreso <span style="color:var(--danger)">*</span></label>
+                                <input type="datetime-local" id="tFechaIngreso" required />
+                            </div>
+                            <div>
+                                <label class="lbl">Modalidad de Entrega</label>
+                                <select id="tModalidad">
+                                    <option value="">Seleccione...</option>
+                                    <option value="Intramural">Intramural</option>
+                                    <option value="Extramural">Extramural</option>
+                                    <option value="Telemedicina">Telemedicina</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Entorno de Atención</label>
+                                <select id="tEntorno">
+                                    <option value="">Seleccione...</option>
+                                    <option value="Hospitalario">Hospitalario</option>
+                                    <option value="Ambulatorio">Ambulatorio</option>
+                                    <option value="Domiciliario">Domiciliario</option>
+                                    <option value="Urgencias">Urgencias</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Vía de Ingreso</label>
+                                <select id="tViaIngreso">
+                                    <option value="">Seleccione...</option>
+                                    <option value="Espontánea">Espontánea</option>
+                                    <option value="Remitido">Remitido</option>
+                                    <option value="Urgencias">Urgencias</option>
+                                    <option value="Traslado">Traslado</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="lbl">Fecha y Hora de Triage <span style="color:var(--danger)">*</span></label>
+                                <input type="datetime-local" id="tFechaTriage" required />
+                            </div>
+                            <div class="full">
+                                <label class="lbl">Causa de Atención / Motivo de Consulta</label>
+                                <textarea id="tCausa" placeholder="Describa el motivo de consulta..." style="width:100%;min-height:70px;padding:.75rem;background:var(--surface2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);font-family:'Inter',sans-serif;resize:vertical;outline:none;"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <div class="form-section-title"><i class="ph ph-warning-octagon"></i> Clasificación de Triage &mdash; Res. 5596/2015 <span style="color:var(--danger)">*</span></div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.75rem;margin-top:.75rem;">
+                            <label class="triage-option">
+                                <input type="radio" name="triage" value="I" />
+                                <div class="triage-card" style="border-color:#ef4444;background:rgba(239,68,68,.08);">
+                                    <div style="font-size:1.6rem;font-weight:800;color:#ef4444;">I</div>
+                                    <div style="font-size:.75rem;font-weight:700;color:#ef4444;">ROJO</div>
+                                    <div style="font-size:.7rem;color:var(--text-muted);margin-top:.2rem;">Reanimación</div>
+                                </div>
+                            </label>
+                            <label class="triage-option">
+                                <input type="radio" name="triage" value="II" />
+                                <div class="triage-card" style="border-color:#f97316;background:rgba(249,115,22,.08);">
+                                    <div style="font-size:1.6rem;font-weight:800;color:#f97316;">II</div>
+                                    <div style="font-size:.75rem;font-weight:700;color:#f97316;">NARANJA</div>
+                                    <div style="font-size:.7rem;color:var(--text-muted);margin-top:.2rem;">Emergencia</div>
+                                </div>
+                            </label>
+                            <label class="triage-option">
+                                <input type="radio" name="triage" value="III" />
+                                <div class="triage-card" style="border-color:#eab308;background:rgba(234,179,8,.08);">
+                                    <div style="font-size:1.6rem;font-weight:800;color:#eab308;">III</div>
+                                    <div style="font-size:.75rem;font-weight:700;color:#eab308;">AMARILLO</div>
+                                    <div style="font-size:.7rem;color:var(--text-muted);margin-top:.2rem;">Urgencia</div>
+                                </div>
+                            </label>
+                            <label class="triage-option">
+                                <input type="radio" name="triage" value="IV" />
+                                <div class="triage-card" style="border-color:#22c55e;background:rgba(34,197,94,.08);">
+                                    <div style="font-size:1.6rem;font-weight:800;color:#22c55e;">IV</div>
+                                    <div style="font-size:.75rem;font-weight:700;color:#22c55e;">VERDE</div>
+                                    <div style="font-size:.7rem;color:var(--text-muted);margin-top:.2rem;">Menos urgente</div>
+                                </div>
+                            </label>
+                            <label class="triage-option">
+                                <input type="radio" name="triage" value="V" />
+                                <div class="triage-card" style="border-color:#3b82f6;background:rgba(59,130,246,.08);">
+                                    <div style="font-size:1.6rem;font-weight:800;color:#3b82f6;">V</div>
+                                    <div style="font-size:.75rem;font-weight:700;color:#3b82f6;">AZUL</div>
+                                    <div style="font-size:.7rem;color:var(--text-muted);margin-top:.2rem;">No urgente</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="display:flex;gap:.75rem;flex-wrap:wrap;padding-top:1rem;border-top:1px solid var(--border);">
+                        <button type="button" class="btn btn-ghost" onclick="goToStep(2)">
+                            <i class="ph ph-arrow-left"></i> Atrás
+                        </button>
+                        <button type="submit" class="btn btn-success" id="btnTriage">
+                            <i class="ph ph-first-aid"></i> Confirmar Admisión + Triage
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- ══ STEP 5: RESULT ══ -->
+        <div class="step-panel" id="panel5">
+            <div class="card" style="text-align:center;padding:3rem 2rem;">
+                <div style="font-size:3.5rem;margin-bottom:1rem;">✅</div>
+                <h2 style="font-size:1.4rem;font-weight:800;margin-bottom:.5rem;" id="resultTitle">Admisión completada</h2>
+                <p style="color:var(--text-muted);margin-bottom:1.5rem;" id="resultMsg"></p>
+                <div id="resultDetails"
+                    style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;max-width:480px;margin:0 auto 2rem;">
+                </div>
+                <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap;">
+                    <button class="btn btn-ghost" onclick="goToStep(1)">
+                        <i class="ph ph-arrow-clockwise"></i> Nueva admisión
+                    </button>
+                    <a href="/medico" class="btn btn-primary">
+                        <i class="ph ph-stethoscope"></i> Ir a Módulo Médico
+                    </a>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /page -->
+
+    <script>
+        // ── Estado global ──
+        let currentStep = 1;
+        let verifyData = null;
+        let currentDocId = null;
+        let currentNombre = '';
+
+        // ── Navegación de steps ──
+        function goToStep(n) {
+            for (let i = 1; i <= 5; i++) {
+                const p = document.getElementById(`panel${i}`);
+                if (p) p.classList.toggle('active', i === n);
+            }
+            currentStep = n;
+            updateStepBar(n);
+        }
+
+        function updateStepBar(n) {
+            const displayStep = Math.min(n, 4);
+            [1, 2, 3, 4].forEach(i => {
+                const num = document.getElementById(`sn${i}`);
+                const lbl = document.getElementById(`sl${i}`);
+                if (!num) return;
+                num.className = 'step-num' + (i < displayStep ? ' done' : i === displayStep ? ' active' : '');
+                lbl.className = 'step-label' + (i <= displayStep ? ' active' : '');
+                if (i < displayStep) {
+                    num.innerHTML = '<i class="ph ph-check" style="font-size:.9rem;"></i>';
+                } else {
+                    num.textContent = i;
+                }
+                const l = document.getElementById(`line${i}`);
+                if (l) l.className = 'step-line' + (i < displayStep ? ' done' : '');
+            });
+        }
+
+        // ── Ir al paso de triage ──
+        function goToTriageStep(docId, nombre) {
+            currentDocId = docId;
+            currentNombre = nombre || '';
+            document.getElementById('triageDocLabel').textContent =
+                (nombre ? nombre + ' \u2014 ' : '') + 'Doc: ' + docId;
+            // Auto-rellenar fecha actual
+            const now = new Date();
+            const pad = v => String(v).padStart(2, '0');
+            const local = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+            document.getElementById('tFechaIngreso').value = local;
+            document.getElementById('tFechaTriage').value = local;
+            goToStep(4);
+        }
+
+        // ── Alert ──
+        function showAlert(msg, type = 'info') {
+            const box = document.getElementById('alertBox');
+            box.className = `alert alert-${type} show`;
+            const icons = { info: 'info', success: 'check-circle', error: 'warning-circle' };
+            box.innerHTML = `<i class="ph ph-${icons[type]}" style="flex-shrink:0;font-size:1.1rem;"></i><span>${msg}</span>`;
+            setTimeout(() => box.className = 'alert', 6000);
+        }
+
+        // ── Calcular edad ──
+        document.getElementById('rFechaNac').addEventListener('change', function () {
+            const bd = new Date(this.value), t = new Date();
+            let age = t.getFullYear() - bd.getFullYear();
+            if (t.getMonth() - bd.getMonth() < 0 || (t.getMonth() === bd.getMonth() && t.getDate() < bd.getDate())) age--;
+            document.getElementById('rEdad').value = age >= 0 ? age : 0;
+        });
+        document.getElementById('rFechaNac').max = new Date().toISOString().split('T')[0];
+
+        // ── STEP 1: Buscar paciente ──
+        async function buscarPaciente() {
+            const doc = document.getElementById('numeroDocumento').value.trim();
+            if (!doc || !/^\d{6,15}$/.test(doc)) {
+                showAlert('Ingrese un número de documento válido (6–15 dígitos)', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('btnBuscar');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Verificando...';
+
+            try {
+                const res = await fetch(`/api/v1/admision/verificar/${doc}`);
+                verifyData = await res.json();
+                renderVerifyStep(verifyData);
+                goToStep(2);
+            } catch (e) {
+                showAlert('Error de conexión con el servidor', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ph ph-magnifying-glass"></i> Buscar';
+            }
+        }
+
+        // ── STEP 2: Renderizar verificación ──
+        function renderVerifyStep(d) {
+            const grid = document.getElementById('statusGrid');
+            const badges = document.getElementById('badgesContainer');
+            const pCard = document.getElementById('patientFoundCard');
+            const actionRow = document.getElementById('actionRow');
+
+            // Badges de nodo y FHIR
+            badges.innerHTML = `
+    <span class="node-badge"><i class="ph ph-database"></i> ${d.nodo_asignado || 'Calculando...'}</span>
+    <span class="node-badge fhir-badge"><i class="ph ph-heartbeat"></i> HAPI FHIR R4</span>
+  `;
+
+            // Status cards
+            const localIcon = d.encontrado_local ? '🗄️' : '📭';
+            const fhirIcon = d.encontrado_fhir ? '🔗' : '🔍';
+            const localCls = d.encontrado_local ? 'found' : 'not-found';
+            const fhirCls = d.encontrado_fhir ? 'found' : 'not-found';
+
+            grid.innerHTML = `
+    <div class="status-card ${localCls}">
+      <div class="status-icon">${localIcon}</div>
+      <div>
+        <h3>${d.encontrado_local ? 'Encontrado en DB local' : 'No está en DB local'}</h3>
+        <p>${d.encontrado_local ? 'Paciente registrado en la base de datos PostgreSQL distribuida.' : 'No existe registro previo en ningún nodo PostgreSQL.'}</p>
+        ${d.error_local ? `<p class="detail" style="color:var(--warning);">⚠ ${d.error_local}</p>` : ''}
+      </div>
+    </div>
+    <div class="status-card ${fhirCls}">
+      <div class="status-icon">${fhirIcon}</div>
+      <div>
+        <h3>${d.encontrado_fhir ? 'Encontrado en HAPI FHIR' : 'No está en HAPI FHIR'}</h3>
+        <p>${d.encontrado_fhir ? 'Recurso FHIR Patient disponible en el servidor HL7.' : 'No hay recurso FHIR Patient asociado a este documento.'}</p>
+        ${d.error_fhir ? `<p class="detail" style="color:var(--warning);">⚠ FHIR: ${d.error_fhir}</p>` : ''}
+      </div>
+    </div>
+  `;
+
+            // Mostrar datos si existe
+            const paciente = d.paciente_local || (d.paciente_fhir ? extractFHIRData(d.paciente_fhir) : null);
+            if (paciente) {
+                pCard.style.display = 'block';
+                renderPatientFound(paciente, d);
+            } else {
+                pCard.style.display = 'none';
+            }
+
+            // Botones de acción
+            actionRow.innerHTML = '';
+            if (d.accion_recomendada === 'admitir_existente') {
+                actionRow.innerHTML = `
+      <button class="btn btn-success" onclick="admitirExistente()">
+        <i class="ph ph-check-circle"></i> Admitir paciente
+      </button>
+      <a href="/carga-hc" class="btn btn-primary">
+        <i class="ph ph-clipboard-text"></i> Ver Historia Clínica
+      </a>
+    `;
+            } else if (d.accion_recomendada === 'importar_de_fhir') {
+                actionRow.innerHTML = `
+      <button class="btn btn-warning" onclick="importarDeFHIR()">
+        <i class="ph ph-cloud-arrow-down"></i> Importar desde FHIR y admitir
+      </button>
+      <button class="btn btn-ghost" onclick="irARegistro()">
+        <i class="ph ph-pencil"></i> Registrar manualmente
+      </button>
+    `;
+            } else {
+                actionRow.innerHTML = `
+      <button class="btn btn-primary" onclick="irARegistro()">
+        <i class="ph ph-user-circle-plus"></i> Registrar nuevo paciente
+      </button>
+    `;
+            }
+        }
+
+        function extractFHIRData(fhirPatient) {
+            try {
+                const name = fhirPatient.name?.[0]?.text || 'Sin nombre';
+                const id = fhirPatient.identifier?.[0]?.value || '';
+                return { nombre_completo: name, documento_id: id, sexo: fhirPatient.gender, fecha_nacimiento: fhirPatient.birthDate, _fuente: 'FHIR', fhir_patient_id: fhirPatient.id };
+            } catch { return null; }
+        }
+
+        function renderPatientFound(p, d) {
+            document.getElementById('pfNombre').textContent = p.nombre_completo || '—';
+            const fuente = p._fuente === 'FHIR' ? '🔗 Fuente: HAPI FHIR' : `🗄️ Nodo: ${p._nodo || 'local'}`;
+            document.getElementById('pfMeta').innerHTML = `Doc: ${p.documento_id || d.documento_id} &nbsp;·&nbsp; ${fuente}`;
+            const fields = [
+                ['Fecha Nac.', p.fecha_nacimiento || '—'],
+                ['Sexo', mapSexo(p.sexo) || '—'],
+                ['FHIR ID', p.fhir_patient_id || '—'],
+                ['Municipio', p.municipio_residencia || '—'],
+                ['Etnia', p.etnia || '—'],
+                ['Nodo', p._nodo || '—'],
+            ];
+            document.getElementById('pfFields').innerHTML = fields.map(([l, v]) =>
+                `<div class="pf"><div class="pf-label">${l}</div><div class="pf-value">${v}</div></div>`
+            ).join('');
+        }
+
+        function mapSexo(s) {
+            return { male: 'Masculino', female: 'Femenino', other: 'Otro', unknown: 'Desconocido' }[s] || s;
+        }
+
+        // ── Acciones del step 2 ──
+        function irARegistro() {
+            const doc = document.getElementById('numeroDocumento').value.trim();
+            const tipo = document.getElementById('tipoDocumento').value;
+            document.getElementById('rNumDoc').value = doc;
+            document.getElementById('rTipoDoc').value = tipo;
+            document.getElementById('docLabel').textContent = `${tipo} ${doc}`;
+            goToStep(3);
+        }
+
+        function admitirExistente() {
+            const p = verifyData?.paciente_local || extractFHIRData(verifyData?.paciente_fhir);
+            const docId = parseInt(verifyData?.documento_id || p?.documento_id);
+            goToTriageStep(docId, p?.nombre_completo || '');
+        }
+
+        async function importarDeFHIR() {
+            const fhir = verifyData?.paciente_fhir;
+            if (!fhir) return;
+            showAlert('Importando datos desde HAPI FHIR...', 'info');
+            // Pre-llenar formulario con datos FHIR
+            const name = fhir.name?.[0]?.text || '';
+            document.getElementById('rNombre').value = name;
+            document.getElementById('rFechaNac').value = fhir.birthDate || '';
+            document.getElementById('rSexo').value = fhir.gender || '';
+            irARegistro();
+        }
+
+        // ── STEP 3: Registro ──
+        document.getElementById('registerForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            const btn = document.getElementById('btnRegistrar');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Registrando en DB + FHIR...';
+
+            const payload = {
+                tipoDocumento: document.getElementById('rTipoDoc').value,
+                numeroDocumento: document.getElementById('rNumDoc').value,
+                nombreCompleto: document.getElementById('rNombre').value,
+                fechaNacimiento: document.getElementById('rFechaNac').value,
+                edad: parseInt(document.getElementById('rEdad').value) || 0,
+                unidadEdad: document.getElementById('rUnidadEdad').value,
+                sexo: document.getElementById('rSexo').value,
+                genero: document.getElementById('rGenero').value,
+                ocupacion: document.getElementById('rOcupacion').value,
+                paisNacionalidad: document.getElementById('rPaisNac').value,
+                paisResidencia: document.getElementById('rPaisRes').value,
+                municipioResidencia: document.getElementById('rMunicipio').value,
+                etnia: document.getElementById('rEtnia').value,
+                categoriaDiscapacidad: document.getElementById('rDiscapacidad').value,
+                voluntadAnticipada: document.getElementById('rVoluntad').value,
+            };
+
+            try {
+                const res = await fetch('/api/v1/admision/registrar', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    const docId = data.paciente_local?.documento_id || parseInt(payload.numeroDocumento);
+                    goToTriageStep(docId, payload.nombreCompleto);
+                } else {
+                    showAlert(`Error: ${data.detail || 'No se pudo registrar'}`, 'error');
+                }
+            } catch (err) {
+                showAlert(`Error de conexión: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ph ph-user-circle-plus"></i> Registrar en DB + FHIR';
+            }
+        });
+
+        function renderResultDetails(p, extra) {
+            const container = document.getElementById('resultDetails');
+            const items = [
+                ['Nodo DB', extra?.nodo || p?._nodo || '—'],
+                ['FHIR Patient ID', extra?.fhir_patient_id || p?.fhir_patient_id || '—'],
+                ['Nombre', p?.nombre_completo || '—'],
+                ['Documento', p?.documento_id || extra?.documento_id || '—'],
+            ];
+            container.innerHTML = items.map(([l, v]) =>
+                `<div style="background:var(--surface2);border-radius:10px;padding:.8rem;text-align:left;">
+       <div style="font-size:.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">${l}</div>
+       <div style="font-size:.9rem;font-weight:600;margin-top:.2rem;word-break:break-all;">${v}</div>
+     </div>`
+            ).join('');
+        }
+
+        // ── STEP 4: Submit triage ──
+        document.getElementById('triageForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const selected = document.querySelector('input[name="triage"]:checked');
+            if (!selected) {
+                showAlert('Seleccione una clasificación de triage (I al V)', 'error');
+                return;
+            }
+            const btn = document.getElementById('btnTriage');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Registrando admisión...';
+
+            const payload = {
+                documento_id: currentDocId,
+                entidad_salud: document.getElementById('tEntidad').value,
+                fecha_ingreso: document.getElementById('tFechaIngreso').value,
+                modalidad_entrega: document.getElementById('tModalidad').value,
+                entorno_atencion: document.getElementById('tEntorno').value,
+                via_ingreso: document.getElementById('tViaIngreso').value,
+                causa_atencion: document.getElementById('tCausa').value,
+                fecha_triage: document.getElementById('tFechaTriage').value,
+                clasificacion_triage: selected.value,
+            };
+
+            try {
+                const res = await fetch('/api/v1/medico/atencion', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    const triageLabels = { I: 'I - ROJO (Reanimación)', II: 'II - NARANJA (Emergencia)', III: 'III - AMARILLO (Urgencia)', IV: 'IV - VERDE (Menos urgente)', V: 'V - AZUL (No urgente)' };
+                    document.getElementById('resultTitle').textContent = 'Admisión completada con éxito';
+                    document.getElementById('resultMsg').textContent =
+                        `${currentNombre ? currentNombre + ' ha' : 'El paciente ha'} sido admitido en ${data.nodo} con triage ${selected.value}.`;
+                    const items = [
+                        ['Triage', triageLabels[selected.value] || selected.value],
+                        ['Atención ID', data.atencion_id],
+                        ['Nodo DB', data.nodo],
+                        ['Documento', currentDocId],
+                    ];
+                    document.getElementById('resultDetails').innerHTML = items.map(([l, v]) =>
+                        `<div style="background:var(--surface2);border-radius:10px;padding:.8rem;text-align:left;">
+                           <div style="font-size:.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;">${l}</div>
+                           <div style="font-size:.9rem;font-weight:600;margin-top:.2rem;word-break:break-all;">${v}</div>
+                         </div>`
+                    ).join('');
+                    goToStep(5);
+                } else {
+                    showAlert(`Error: ${data.detail || 'No se pudo registrar la admisión'}`, 'error');
+                }
+            } catch (err) {
+                showAlert(`Error de conexión: ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="ph ph-first-aid"></i> Confirmar Admisión + Triage';
+            }
+        });
+
+        // ── Enter key en búsqueda ──
+        document.getElementById('numeroDocumento').addEventListener('keydown', e => {
+            if (e.key === 'Enter') buscarPaciente();
+        });
+    </script>
+</body>
+
+</html>

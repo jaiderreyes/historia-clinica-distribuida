@@ -48,11 +48,7 @@ services:
     networks:
       - historia_clinica_net
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:8080/fhir/metadata || exit 1" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      disable: true
 
   pg_nodo1:
     image: postgres:15

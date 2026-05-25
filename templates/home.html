@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Historia Clínica Distribuida — Inicio</title>
+    <meta name="description"
+        content="Sistema de Historia Clínica Distribuida con FHIR R4 y PostgreSQL distribuido. Panel de acceso a módulos." />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet" />
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #a5b4fc;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --info: #3b82f6;
+            --bg: #0a0a14;
+            --surface: #12121f;
+            --surface2: #1a1a2e;
+            --surface3: #1e2540;
+            --border: rgba(99, 102, 241, .18);
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --radius: 20px;
+        }
+
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Animated background ── */
+        .bg-glow {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 10% 10%, rgba(99, 102, 241, .18) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 90% 90%, rgba(139, 92, 246, .14) 0%, transparent 60%),
+                radial-gradient(ellipse 40% 40% at 50% 50%, rgba(16, 185, 129, .06) 0%, transparent 70%);
+        }
+
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            opacity: .025;
+            background-image: linear-gradient(rgba(99, 102, 241, 1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 1) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+
+        /* ── Nav ── */
+        .nav {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .9rem 2rem;
+            backdrop-filter: blur(16px);
+            background: rgba(10, 10, 20, .75);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+            font-weight: 800;
+            font-size: 1.05rem;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .nav-brand .brand-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(99, 102, 241, .4);
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+        }
+
+        .nav-pill {
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+            padding: .35rem .9rem;
+            border-radius: 999px;
+            font-size: .78rem;
+            font-weight: 600;
+            background: rgba(16, 185, 129, .12);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, .25);
+        }
+
+        .nav-pill .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1)
+            }
+
+            50% {
+                opacity: .6;
+                transform: scale(.85)
+            }
+        }
+
+        .nav-link-small {
+            padding: .4rem .85rem;
+            border-radius: 8px;
+            font-size: .8rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all .2s;
+            font-weight: 500;
+        }
+
+        .nav-link-small:hover {
+            background: rgba(255, 255, 255, .06);
+            color: var(--text);
+        }
+
+        /* ── Page ── */
+        .page {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 3rem 1.5rem 6rem;
+        }
+
+        /* ── Hero ── */
+        .hero {
+            text-align: center;
+            padding: 3rem 1rem 4rem;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .5rem;
+            background: rgba(99, 102, 241, .1);
+            border: 1px solid rgba(99, 102, 241, .25);
+            border-radius: 999px;
+            padding: .4rem 1.1rem;
+            font-size: .78rem;
+            color: var(--primary-light);
+            font-weight: 600;
+            letter-spacing: .04em;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero h1 {
+            font-size: clamp(2.2rem, 5vw, 3.8rem);
+            font-weight: 900;
+            line-height: 1.1;
+            background: linear-gradient(135deg, #ffffff 20%, var(--primary-light) 60%, #c4b5fd);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+
+        .hero p {
+            font-size: 1.05rem;
+            color: var(--text-muted);
+            max-width: 540px;
+            margin: 0 auto 2.5rem;
+            line-height: 1.7;
+        }
+
+        /* ── Status strip ── */
+        .status-strip {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 3.5rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            font-size: .8rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .status-dot.green {
+            background: #10b981;
+            box-shadow: 0 0 6px #10b981;
+        }
+
+        .status-dot.gray {
+            background: #64748b;
+        }
+
+        .status-dot.red {
+            background: #ef4444;
+            box-shadow: 0 0 6px #ef4444;
+        }
+
+        /* ── Section title ── */
+        .section-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: .6rem;
+        }
+
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ── Module grid ── */
+        .modules-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 1.25rem;
+            margin-bottom: 3rem;
+        }
+
+        /* ── Module card ── */
+        .module-card {
+            position: relative;
+            border-radius: var(--radius);
+            overflow: hidden;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            flex-direction: column;
+            transition: all .35s cubic-bezier(.23, 1, .32, 1);
+            cursor: pointer;
+        }
+
+        .module-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity .35s;
+            background: linear-gradient(135deg, var(--card-color-a, .3) 0%, transparent 60%);
+        }
+
+        .module-card:hover {
+            transform: translateY(-6px);
+            border-color: var(--card-border, var(--border));
+            box-shadow: 0 24px 48px -8px var(--card-shadow, rgba(0, 0, 0, .5));
+        }
+
+        .module-card:hover::before {
+            opacity: 1;
+        }
+
+        .card-accent {
+            height: 4px;
+            width: 100%;
+            background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+        }
+
+        .card-body {
+            padding: 1.6rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-icon-wrap {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            margin-bottom: 1.1rem;
+            background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: #fff;
+            box-shadow: 0 8px 20px var(--card-shadow, rgba(0, 0, 0, .3));
+        }
+
+        .card-tag {
+            font-size: .68rem;
+            font-weight: 700;
+            letter-spacing: .07em;
+            text-transform: uppercase;
+            color: var(--accent-a);
+            margin-bottom: .5rem;
+            opacity: .8;
+        }
+
+        .card-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            margin-bottom: .5rem;
+        }
+
+        .card-desc {
+            font-size: .84rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+            flex: 1;
+        }
+
+        .card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.6rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .card-features {
+            display: flex;
+            gap: .4rem;
+            flex-wrap: wrap;
+        }
+
+        .chip {
+            font-size: .68rem;
+            padding: .2rem .55rem;
+            border-radius: 999px;
+            font-weight: 600;
+            background: rgba(255, 255, 255, .06);
+            border: 1px solid rgba(255, 255, 255, .08);
+            color: var(--text-muted);
+        }
+
+        .card-arrow {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 1.5px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            color: var(--text-muted);
+            transition: all .3s;
+            flex-shrink: 0;
+        }
+
+        .module-card:hover .card-arrow {
+            background: linear-gradient(135deg, var(--accent-a), var(--accent-b));
+            border-color: transparent;
+            color: #fff;
+            transform: translateX(3px);
+        }
+
+        /* Module color themes */
+        .mod-admision {
+            --accent-a: #6366f1;
+            --accent-b: #4f46e5;
+            --card-border: rgba(99, 102, 241, .4);
+            --card-shadow: rgba(99, 102, 241, .25);
+            --card-color-a: rgba(99, 102, 241, .07);
+        }
+
+        .mod-medico {
+            --accent-a: #10b981;
+            --accent-b: #059669;
+            --card-border: rgba(16, 185, 129, .4);
+            --card-shadow: rgba(16, 185, 129, .25);
+            --card-color-a: rgba(16, 185, 129, .07);
+        }
+
+        .mod-consulta {
+            --accent-a: #3b82f6;
+            --accent-b: #2563eb;
+            --card-border: rgba(59, 130, 246, .4);
+            --card-shadow: rgba(59, 130, 246, .25);
+            --card-color-a: rgba(59, 130, 246, .07);
+        }
+
+        .mod-carga {
+            --accent-a: #f59e0b;
+            --accent-b: #d97706;
+            --card-border: rgba(245, 158, 11, .4);
+            --card-shadow: rgba(245, 158, 11, .25);
+            --card-color-a: rgba(245, 158, 11, .07);
+        }
+
+        .mod-registro {
+            --accent-a: #8b5cf6;
+            --accent-b: #7c3aed;
+            --card-border: rgba(139, 92, 246, .4);
+            --card-shadow: rgba(139, 92, 246, .25);
+            --card-color-a: rgba(139, 92, 246, .07);
+        }
+
+        .mod-dashboard {
+            --accent-a: #06b6d4;
+            --accent-b: #0891b2;
+            --card-border: rgba(6, 182, 212, .4);
+            --card-shadow: rgba(6, 182, 212, .25);
+            --card-color-a: rgba(6, 182, 212, .07);
+        }
+
+        /* ── Infra row ── */
+        .infra-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .infra-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 1.1rem 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: .9rem;
+            transition: all .25s;
+        }
+
+        .infra-card:hover {
+            border-color: rgba(99, 102, 241, .3);
+            background: var(--surface2);
+        }
+
+        .infra-icon {
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .infra-label {
+            font-size: .8rem;
+            color: var(--text-muted);
+            margin-bottom: .15rem;
+        }
+
+        .infra-value {
+            font-size: .9rem;
+            font-weight: 700;
+        }
+
+        .badge-up {
+            color: #10b981;
+        }
+
+        .badge-down {
+            color: #ef4444;
+        }
+
+        /* ── Footer ── */
+        .footer {
+            text-align: center;
+            padding-top: 3rem;
+            color: var(--text-muted);
+            font-size: .8rem;
+        }
+
+        .footer a {
+            color: var(--primary-light);
+            text-decoration: none;
+        }
+
+        @media(max-width:640px) {
+            .page {
+                padding: 1.5rem 1rem 4rem;
+            }
+
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .modules-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .status-strip {
+                gap: .75rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="bg-glow"></div>
+    <div class="bg-grid"></div>
+
+    <!-- ══ NAVBAR ══ -->
+    <nav class="nav">
+        <a href="/home" class="nav-brand">
+            <div class="brand-icon"><i class="ph ph-heartbeat"></i></div>
+            HC Distribuida
+        </a>
+        <div class="nav-actions">
+            <div class="nav-pill"><span class="dot"></span> Sistema Activo</div>
+            <a href="/dashboard" class="nav-link-small"><i class="ph ph-monitor"></i> Nodes</a>
+            <a href="/api/health" class="nav-link-small" target="_blank"><i class="ph ph-activity"></i> API</a>
+        </div>
+    </nav>
+
+    <!-- ══ HERO ══ -->
+    <div class="page">
+        <div class="hero">
+            <div class="hero-badge"><i class="ph ph-shield-check"></i> HL7 FHIR R4 · IHE PIX/PDQ · PostgreSQL
+                Distribuido</div>
+            <h1>Historia Clínica<br>Distribuida</h1>
+            <p>Plataforma clínica integrada con estándar HL7 FHIR R4, base de datos distribuida en 3 nodos y motor de
+                consultas unificadas.</p>
+
+            <!-- Live status -->
+            <div class="status-strip" id="statusStrip">
+                <div class="status-item"><span class="status-dot gray"></span> Verificando nodos…</div>
+            </div>
+        </div>
+
+        <!-- ══ MÓDULOS ══ -->
+        <div class="section-title"><i class="ph ph-squares-four"></i> Módulos del Sistema</div>
+
+        <div class="modules-grid">
+
+            <!-- Admisión -->
+            <a href="/admision" class="module-card mod-admision" id="card-admision">
+                <div class="card-accent"></div>
+                <div class="card-body">
+                    <div class="card-icon-wrap"><i class="ph ph-door-open"></i></div>
+                    <div class="card-tag">Flujo de entrada</div>
+                    <div class="card-title">Admisión de Paciente</div>
+                    <div class="card-desc">Verifica si el paciente existe en la base de datos distribuida y en HAPI FHIR
+                        antes de registrarlo. Flujo de 3 pasos con búsqueda dual.</div>
+                </div>
+                <div class="card-footer">
+                    <div class="card-features">
+                        <span class="chip">FHIR R4</span>
+                        <span class="chip">IHE PIX/PDQ</span>
+                        <span class="chip">3 pasos</span>
+                    </div>
+                    <div class="card-arrow"><i class="ph ph-arrow-right"></i></div>
+                </div>
+            </a>
+
+            <!-- Módulo Médico -->
+            <a href="/medico" class="module-card mod-medico" id="card-medico">
+                <div class="card-accent"></div>
+                <div class="card-body">
+                    <div class="card-icon-wrap"><i class="ph ph-stethoscope"></i></div>
+                    <div class="card-tag">Atención clínica</div>
+                    <div class="card-title">Módulo Médico</div>
+                    <div class="card-desc">Registra atenciones con notas SOAP, diagnósticos CIE-10 y prescripciones.
+                        Visualiza la historia clínica completa en timeline.</div>
+                </div>
+                <div class="card-footer">
+                    <div class="card-features">
+                        <span class="chip">SOAP</span>
+                        <span class="chip">CIE-10</span>
+                        <span class="chip">Prescripción</span>
+                    </div>
+                    <div class="card-arrow"><i class="ph ph-arrow-right"></i></div>
+                </div>
+            </a>
+
+            <!-- Consulta HC -->
+            <a href="/consulta-hc" class="module-card mod-consulta" id="card-consulta">
+                <div class="card-accent"></div>
+                <div class="card-body">
+                    <div class="card-icon-wrap"><i class="ph ph-folder-open"></i></div>
+                    <div class="card-tag">Visualización</div>
+                    <div class="card-title">Consulta de Historias</div>
+                    <div class="card-desc">Busca y visualiza pacientes registrados en HAPI FHIR. Filtra por nombre o
+                        documento, ve detalles completos del recurso FHIR.</div>
+                </div>
+                <div class="card-footer">
+                    <div class="card-features">
+                        <span class="chip">FHIR Search</span>
+                        <span class="chip">Paginación</span>
+                    </div>
+                    <div class="card-arrow"><i class="ph ph-arrow-right"></i></div>
+                </div>
+            </a>
+
+            <!-- Carga FIRH -->
+            <a href="/carga-hc" class="module-card mod-carga" id="card-carga">
+                <div class="card-accent"></div>
+                <div class="card-body">
+                    <div class="card-icon-wrap"><i class="ph ph-upload-simple"></i></div>
+                    <div class="card-tag">Carga de datos</div>
+                    <div class="card-title">Carga FIRH</div>
+                    <div class="card-desc">Formulario dinámico para cargar datos en cada tabla de la Historia Clínica:
+                        Usuario, Atención, Tecnología Salud, Diagnóstico, Egreso.</div>
+                </div>
+                <div class="card-footer">
+                    <div class="card-features">
+                        <span class="chip">6 tablas</span>
+                        <span class="chip">Fragmentación</span>
+                    </div>
+                    <div class="card-arrow"><i class="ph ph-arrow-right"></i></div>
+                </div>
+            </a>
+
+            <!-- Registro Paciente -->
+            <a href="/registro-paciente" class="module-card mod-registro" id="card-registro">
+                <div class="card-accent"></div>
+                <div class="card-body">
+                    <div class="card-icon-wrap"><i class="ph ph-user-circle-plus"></i></div>
+                    <div class="card-tag">Identificación</div>
+                    <div class="card-title">Registro de Paciente</div>
+                    <div class="card-desc">Formulario de identificación completo con 15 campos. Transforma los datos al
+                        estándar HL7 FHIR R4 Patient y los envía a HAPI FHIR.</div>
+                </div>
+                <div class="card-footer">
+                    <div class="card-features">
+                        <span class="chip">15 campos</span>
+                        <span class="chip">FHIR Patient</span>
+                    </div>
+                    <div class="card-arrow"><i class="ph ph-arrow-right"></i></div>
+                </div>
+            </a>
+
+            <!-- Dashboard técnico -->
+            <a href="/dashboard" class="module-card mod-dashboard" id="card-dashboard">
+                <div class="card-accent"></div>
+                <div class="card-body">
+                    <div class="card-icon-wrap"><i class="ph ph-monitor"></i></div>
+                    <div class="card-tag">Infraestructura</div>
+                    <div class="card-title">Nodes Monitor</div>
+                    <div class="card-desc">Monitorea en tiempo real el estado de los 3 nodos PostgreSQL. Ejecuta SQL
+                        distribuido y visualiza los resultados combinados de todos los nodos.</div>
+                </div>
+                <div class="card-footer">
+                    <div class="card-features">
+                        <span class="chip">3 nodos</span>
+                        <span class="chip">SQL</span>
+                        <span class="chip">HAdr</span>
+                    </div>
+                    <div class="card-arrow"><i class="ph ph-arrow-right"></i></div>
+                </div>
+            </a>
+
+        </div>
+
+        <!-- ══ INFRAESTRUCTURA ══ -->
+        <div class="section-title" style="margin-top:1rem;"><i class="ph ph-database"></i> Infraestructura</div>
+        <div class="infra-grid" id="infraGrid">
+            <div class="infra-card">
+                <span class="infra-icon" style="color:#6366f1;"><i class="ph ph-cpu"></i></span>
+                <div>
+                    <div class="infra-label">Motor Backend</div>
+                    <div class="infra-value">FastAPI + Python</div>
+                </div>
+            </div>
+            <div class="infra-card">
+                <span class="infra-icon" style="color:#3b82f6;"><i class="ph ph-cloud"></i></span>
+                <div>
+                    <div class="infra-label">FHIR Server</div>
+                    <div class="infra-value" id="fhirStatus">HAPI FHIR R4</div>
+                </div>
+            </div>
+            <div class="infra-card" id="nodeCard1">
+                <span class="infra-icon" style="color:#10b981;"><i class="ph ph-database"></i></span>
+                <div>
+                    <div class="infra-label">Nodo 1 — doc &lt; 4B</div>
+                    <div class="infra-value" id="n1Status">…</div>
+                </div>
+            </div>
+            <div class="infra-card" id="nodeCard2">
+                <span class="infra-icon" style="color:#10b981;"><i class="ph ph-database"></i></span>
+                <div>
+                    <div class="infra-label">Nodo 2 — 4B–7B</div>
+                    <div class="infra-value" id="n2Status">…</div>
+                </div>
+            </div>
+            <div class="infra-card" id="nodeCard3">
+                <span class="infra-icon" style="color:#10b981;"><i class="ph ph-database"></i></span>
+                <div>
+                    <div class="infra-label">Nodo 3 — doc &gt; 7B</div>
+                    <div class="infra-value" id="n3Status">…</div>
+                </div>
+            </div>
+            <div class="infra-card">
+                <span class="infra-icon" style="color:#f59e0b;"><i class="ph ph-plugs-connected"></i></span>
+                <div>
+                    <div class="infra-label">Protocolo</div>
+                    <div class="infra-value">MCP · REST · FHIR</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Sistema de Historia Clínica Distribuida · HL7 FHIR R4 · <a href="/docs" target="_blank">API Docs</a> · <a
+                    href="/dashboard">Nodes Monitor</a></p>
+        </div>
+    </div>
+
+    <script>
+        async function loadStatus() {
+            try {
+                const r = await fetch('/api/nodes');
+                const nodes = await r.json();
+                const strip = document.getElementById('statusStrip');
+                const items = nodes.map(n => {
+                    const up = n.status === 'running';
+                    const cls = up ? 'green' : 'red';
+                    const label = up ? 'UP' : 'DOWN';
+                    return `<div class="status-item"><span class="status-dot ${cls}"></span> ${n.id.replace('_', ' ')} — ${label} :${n.port}</div>`;
+                });
+                const allUp = nodes.every(n => n.status === 'running');
+                const summary = allUp
+                    ? `<div class="status-item"><span class="status-dot green"></span> <strong>Todos los nodos activos</strong></div>`
+                    : `<div class="status-item"><span class="status-dot red"></span> Algunos nodos caídos</div>`;
+                strip.innerHTML = summary + items.join('');
+
+                // Update infra cards
+                const ids = ['n1Status', 'n2Status', 'n3Status'];
+                nodes.forEach((n, i) => {
+                    const el = document.getElementById(ids[i]);
+                    if (el) {
+                        const up = n.status === 'running';
+                        el.innerHTML = `<span class="${up ? 'badge-up' : 'badge-down'}">${up ? '● UP' : '● DOWN'}</span> :${n.port}`;
+                    }
+                });
+            } catch (e) {
+                document.getElementById('statusStrip').innerHTML =
+                    '<div class="status-item"><span class="status-dot gray"></span> No se pudo conectar al servidor</div>';
+            }
+
+            // FHIR status
+            try {
+                const r2 = await fetch('/api/v1/fhir/health');
+                const d2 = await r2.json();
+                const el = document.getElementById('fhirStatus');
+                if (el) el.innerHTML = d2.status === 'ok'
+                    ? '<span class="badge-up">● UP</span> HAPI FHIR R4'
+                    : '<span class="badge-down">● Degradado</span> HAPI FHIR';
+            } catch (e) {
+                const el = document.getElementById('fhirStatus');
+                if (el) el.innerHTML = '<span style="color:var(--text-muted)">● Verificando…</span>';
+            }
+        }
+
+        loadStatus();
+        // Refresh every 30s
+        setInterval(loadStatus, 30000);
+    </script>
+</body>
+
+</html>
