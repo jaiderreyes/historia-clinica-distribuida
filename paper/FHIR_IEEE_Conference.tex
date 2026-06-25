@@ -271,7 +271,7 @@ La Fig.~\ref{fig:arq} ilustra la arquitectura general del sistema.
 
 \begin{figure}[htbp]
 \centerline{\includegraphics[width=\columnwidth]{fig_arquitectura.png}}
-\caption{Arquitectura distribuida NCS Clinical. Nodos hospitalarios
+\caption{Arquitectura distribuida del prototipo. Nodos hospitalarios
 independientes con HAPI FHIR y PostgreSQL, autenticaci\'on OAuth2
 mediante Keycloak y monitoreo centralizado con Prometheus y Grafana.}
 \label{fig:arq}
@@ -282,7 +282,7 @@ del sistema, su rol en la arquitectura y la tecnolog\'ia de vanguardia
 que representa cada uno.
 
 \begin{table}[htbp]
-\caption{Stack Tecnol\'ogico del Prototipo NCS Clinical}
+\caption{Stack Tecnol\'ogico del Prototipo Distribuido FHIR}
 \label{tab:componentes}
 \begin{center}
 \renewcommand{\arraystretch}{1.2}
@@ -345,7 +345,7 @@ cl\'inica recuperan recursos mediante peticiones RESTful \texttt{GET}.
 \centerline{\includegraphics[width=\columnwidth]{fig_formulario.jpg}}
 \caption{Formulario de admisi\'on del paciente. Captura tipo de documento,
 nombre, fecha de nacimiento, sexo, g\'enero, discapacidad y municipio.
-Fuente: prototipo NCS Clinical (may-2026).}
+Fuente: prototipo historia cl\'inica distribuida FHIR (may-2026).}
 \label{fig:formulario}
 \end{figure}
 
@@ -357,9 +357,9 @@ la solicitud.
 
 \begin{figure}[htbp]
 \centerline{\includegraphics[width=0.7\columnwidth]{fig_login.jpg}}
-\caption{Pantalla de autenticaci\'on OAuth2/JWT del sistema NCS Clinical.
+\caption{Pantalla de autenticaci\'on OAuth2/JWT del sistema.
 Keycloak gestiona la autorizaci\'on de acceso a los nodos FHIR.
-Fuente: prototipo NCS Clinical (may-2026).}
+Fuente: prototipo historia cl\'inica distribuida FHIR (may-2026).}
 \label{fig:login}
 \end{figure}
 
@@ -445,7 +445,7 @@ La Fig.~\ref{fig:obs} muestra la captura del endpoint en operaci\'on.
 \centerline{\includegraphics[width=\columnwidth]{fig_observation.jpg}}
 \caption{Respuesta JSON del endpoint \texttt{/fhir/Observation}.
 Recurso con c\'odigo LOINC 8480-6 en estado ``final'', con fuente y
-versi\'on trazables. Fuente: prototipo NCS Clinical (may-2026).}
+versi\'on trazables. Fuente: prototipo historia cl\'inica distribuida FHIR (may-2026).}
 \label{fig:obs}
 \end{figure}
 
@@ -570,14 +570,14 @@ y extender la cobertura de recursos FHIR hacia perfiles IPS
 (\textit{International Patient Summary}).
 
 El repositorio del proyecto est\'a disponible en:
-\url{https://github.com/danilocortinez123-netizen/NCS.Clinical-Distribuido}
+\url{https://github.com/jaiderreyes/historia-clinica-distribuida}
 
 % ============================================================
 \section*{Agradecimientos}
 
 Los autores agradecen a la Corporaci\'on Universitaria Antonio Jos\'e
 de Sucre (UAJS) por el apoyo institucional, y a los estudiantes
-colaboradores del proyecto NCS Clinical por su contribuci\'on al
+colaboradores del proyecto por su contribuci\'on al
 desarrollo e implementaci\'on del sistema.
 
 % ============================================================
